@@ -289,7 +289,7 @@ public final class FloatingPetService extends Service {
             clearAlert();
             return;
         }
-        if (alert.icon == null) alertIcon.setImageResource(android.R.drawable.ic_dialog_info);
+        if (alert.icon == null) alertIcon.setImageResource(R.drawable.ic_notification);
         else alertIcon.setImageDrawable(alert.icon);
         alertIcon.setContentDescription(alert.source);
         android.text.SpannableStringBuilder preview = new android.text.SpannableStringBuilder();

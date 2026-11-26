@@ -85,8 +85,6 @@ final class DiscView extends View {
             canvas.drawArc(artworkBounds, -40, 80, true, paint);
             canvas.drawArc(artworkBounds, 140, 80, true, paint);
         }
-        paint.setColor(0x88ffe5c7);
-        canvas.drawArc(9, 9, 91, 91, 217, 24, true, paint);
         paint.setColor(0xffe3baa0);
         canvas.drawCircle(50, 50, 12, paint);
         paint.setColor(0xff202c45);

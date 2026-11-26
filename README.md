@@ -1,4 +1,4 @@
-# Andi Android · trial 0.2.4
+# Andi Android · trial 0.2.5
 
 Push proyek ke repo GitHub dengan GitHub Actions aktif untuk membangun APK di server GitHub. Workflow **Build Andi debug APK** berjalan saat push ke `main` dan dapat dijalankan manual dari tab **Actions**. Setelah build sukses, unduh artefak **Andi-debug**, ekstrak, lalu buka `Andi-debug.apk` di HP.
 
@@ -17,7 +17,7 @@ Trial ini menargetkan Android 8.0 ke atas. Buka APK debug yang sudah dibuat, lal
 
 1. Pilih **Buka pengaturan izin**, aktifkan **Tampilkan di atas aplikasi lain** untuk Andi, kembali ke app, lalu pilih **Tampilkan Andi**.
 2. Pilih **Akses notifikasi dan musik** dan aktifkan Andi di pengaturan Android jika ingin mencoba bubble notifikasi dan musik.
-3. Dengan layar terbuka, kirim pesan tes ke HP. Bubble menampilkan ikon aplikasi, nama pengirim jika tersedia, dan isi pesan selama 3,5 detik, lalu kembali ke kartu musik jika tersedia.
+3. Dengan layar terbuka, kirim pesan tes ke HP. Bubble menampilkan ikon aplikasi atau ikon notifikasi Andi jika ikon aplikasi tidak tersedia, nama pengirim jika tersedia, dan isi pesan selama 3,5 detik, lalu kembali ke kartu musik jika tersedia.
 4. Putar lagu dari aplikasi musik untuk melihat CD berputar. Foto album muncul jika pemutar menyediakannya. Judul lagu dan nama artis tampil jika pemutar menyediakannya. Ketuk Andi sekali untuk menyembunyikan kartu musik, dan sekali lagi untuk membukanya. Geser Andi untuk melihat kartu pindah sisi. Coba juga tombol jeda, lanjut, sebelumnya, dan berikutnya.
 5. Geser Andi, putar layar, lalu tahan karakter selama tiga detik untuk menyembunyikan. Beberapa layar sistem dan aplikasi dapat menyembunyikan overlay.
 

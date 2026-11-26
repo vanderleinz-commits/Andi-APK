@@ -3,8 +3,10 @@ package id.vanderleinz.lumo;
 import android.app.KeyguardManager;
 import android.app.Notification;
 import android.content.ComponentName;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.ResolveInfo;
 import android.graphics.drawable.Drawable;
 import android.media.MediaDescription;
 import android.media.MediaMetadata;
@@ -127,21 +129,23 @@ public final class PhoneEvents extends NotificationListenerService {
         if (Notification.CATEGORY_TRANSPORT.equals(notification.category)
                 || notification.visibility == Notification.VISIBILITY_SECRET
                 || getSystemService(KeyguardManager.class).isKeyguardLocked()) return;
-        String source = "aplikasi lain";
+        String packageName = posted.getPackageName();
+        String source = packageName;
         Drawable appIcon = null;
         PackageManager packages = getPackageManager();
         try {
-            ApplicationInfo app = packages.getApplicationInfo(posted.getPackageName(), 0);
+            ApplicationInfo app = packages.getApplicationInfo(packageName, 0);
             source = packages.getApplicationLabel(app).toString();
-            appIcon = packages.getApplicationIcon(app);
-        } catch (PackageManager.NameNotFoundException ignored) { }
-        boolean whatsApp = "com.whatsapp".equals(posted.getPackageName())
-                || "com.whatsapp.w4b".equals(posted.getPackageName());
-        if (appIcon == null && whatsApp) appIcon = getDrawable(R.drawable.ic_whatsapp_fallback);
-        if (appIcon == null && notification.getSmallIcon() != null) {
-            try {
-                appIcon = notification.getSmallIcon().loadDrawable(this);
-            } catch (RuntimeException ignored) { }
+            Intent launcher = packages.getLaunchIntentForPackage(packageName);
+            if (launcher == null) {
+                launcher = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                        .setPackage(packageName);
+            }
+            ResolveInfo entry = packages.resolveActivity(launcher, 0);
+            if (entry != null && entry.getIconResource() != 0) appIcon = entry.loadIcon(packages);
+            if (appIcon == null && app.icon != 0) appIcon = app.loadIcon(packages);
+        } catch (PackageManager.NameNotFoundException | RuntimeException error) {
+            Log.d("AndiNotifications", "App icon unavailable for " + packageName, error);
         }
         CharSequence body = "";
         CharSequence sender = null;
