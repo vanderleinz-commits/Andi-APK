@@ -17,7 +17,7 @@ Trial ini menargetkan Android 8.0 ke atas. Buka APK debug yang sudah dibuat, lal
 
 1. Pilih **Buka pengaturan izin**, aktifkan **Tampilkan di atas aplikasi lain** untuk Andi, kembali ke app, lalu pilih **Tampilkan Andi**.
 2. Pilih **Akses notifikasi dan musik** dan aktifkan Andi di pengaturan Android jika ingin mencoba bubble notifikasi dan musik.
-3. Dengan layar terbuka, kirim pesan tes ke HP. Bubble menampilkan pratinjau dari aplikasi pengirim selama sekitar lima detik, lalu kembali ke musik jika lagu masih diputar.
+3. Dengan layar terbuka, kirim pesan tes ke HP. Bubble menampilkan ikon aplikasi pengirim dan isi pesan selama sekitar lima detik, lalu kembali ke kartu musik jika tersedia.
 4. Putar lagu dari aplikasi musik untuk melihat roda kaset berputar. Cover muncul jika disediakan pemutar. Ketuk kartu musik untuk melihat hingga empat judul dari antrean jika tersedia, lalu coba jeda, lanjutkan, dan ganti lagu.
 5. Geser Andi, putar layar, lalu tahan karakter untuk menyembunyikan. Beberapa layar sistem dan aplikasi dapat menyembunyikan overlay.
 

@@ -16,6 +16,8 @@ import android.graphics.Bitmap;
 import android.graphics.PixelFormat;
 import android.graphics.Point;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.Drawable;
+import android.media.session.PlaybackState;
 import android.hardware.display.DisplayManager;
 import android.os.Build;
 import android.os.Handler;
@@ -34,6 +36,8 @@ import android.view.WindowMetrics;
 import android.widget.Toast;
 import android.widget.TextView;
 import android.widget.LinearLayout;
+import android.widget.Button;
+import android.widget.ImageView;
 
 import java.util.Collections;
 import java.util.List;
@@ -52,10 +56,15 @@ public final class FloatingPetService extends Service {
     private PetView pet;
     private LinearLayout bubble;
     private TextView alertView;
+    private LinearLayout alertPanel;
+    private ImageView alertIcon;
     private TextView musicView;
     private TextView queueView;
     private LinearLayout musicPanel;
     private CassetteView cassette;
+    private Button previousTrack;
+    private Button playPause;
+    private Button nextTrack;
     private boolean hasMusic;
     private boolean alertActive;
     private boolean queueOpen;
@@ -151,7 +160,18 @@ public final class FloatingPetService extends Service {
         background.setColor(0xff202c45);
         background.setStroke(dp(1), 0xffbc8969);
         bubble.setBackground(background);
-        alertView = addBubbleText(3);
+        alertPanel = new LinearLayout(overlayContext);
+        alertPanel.setGravity(Gravity.CENTER_VERTICAL);
+        alertPanel.setMinimumHeight(dp(42));
+        alertPanel.setVisibility(View.GONE);
+        bubble.addView(alertPanel);
+        alertIcon = new ImageView(overlayContext);
+        alertIcon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        alertPanel.addView(alertIcon, new LinearLayout.LayoutParams(dp(27), dp(27)));
+        alertView = newBubbleText(3);
+        LinearLayout.LayoutParams messageParams = new LinearLayout.LayoutParams(0, -2, 1);
+        messageParams.leftMargin = dp(9);
+        alertPanel.addView(alertView, messageParams);
         musicPanel = new LinearLayout(overlayContext);
         musicPanel.setOrientation(LinearLayout.VERTICAL);
         musicPanel.setVisibility(View.GONE);
@@ -166,6 +186,12 @@ public final class FloatingPetService extends Service {
         row.addView(cassette, cassetteParams);
         musicView = newBubbleText(2);
         row.addView(musicView, new LinearLayout.LayoutParams(0, -2, 1));
+        LinearLayout controls = new LinearLayout(overlayContext);
+        musicPanel.addView(controls);
+        previousTrack = addPlaybackButton(controls, "⏮", "Lagu sebelumnya", PlaybackState.ACTION_SKIP_TO_PREVIOUS);
+        playPause = addPlaybackButton(controls, "▶", "Putar",
+                PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_PLAY_PAUSE);
+        nextTrack = addPlaybackButton(controls, "⏭", "Lagu berikutnya", PlaybackState.ACTION_SKIP_TO_NEXT);
         queueView = newBubbleText(5);
         musicPanel.addView(queueView);
         row.setOnClickListener(view -> {
@@ -184,11 +210,23 @@ public final class FloatingPetService extends Service {
         return Math.round(value * overlayContext.getResources().getDisplayMetrics().density);
     }
 
-    private TextView addBubbleText(int lines) {
-        TextView view = newBubbleText(lines);
-        view.setVisibility(View.GONE);
-        bubble.addView(view);
-        return view;
+    private Button addPlaybackButton(LinearLayout row, String icon, String label, long action) {
+        Button button = new Button(overlayContext, null, android.R.attr.borderlessButtonStyle);
+        button.setText(icon);
+        button.setTextSize(19);
+        button.setTextColor(0xffffe5c7);
+        button.setContentDescription(label);
+        button.setPadding(0, 0, 0, 0);
+        button.setMinimumWidth(0);
+        button.setMinWidth(0);
+        button.setOnClickListener(view -> PhoneEvents.control(action));
+        row.addView(button, new LinearLayout.LayoutParams(0, dp(48), 1));
+        return button;
+    }
+
+    private void setPlaybackEnabled(Button button, boolean enabled) {
+        button.setEnabled(enabled);
+        button.setAlpha(enabled ? 1f : 0.4f);
     }
 
     private TextView newBubbleText(int lines) {
@@ -201,9 +239,13 @@ public final class FloatingPetService extends Service {
         return view;
     }
 
-    void showAlert(String header, String message) {
+    void showAlert(Drawable appIcon, String source, String message) {
         if (bubble == null) return;
-        alertView.setText(message.isEmpty() ? header : header + "\n" + message);
+        if (appIcon == null) alertIcon.setImageResource(android.R.drawable.ic_dialog_info);
+        else alertIcon.setImageDrawable(appIcon);
+        alertIcon.setContentDescription(source);
+        alertView.setText(message);
+        alertView.setVisibility(message.isEmpty() ? View.GONE : View.VISIBLE);
         boolean wasShowingAlert = alertActive;
         alertActive = true;
         pet.react();
@@ -217,14 +259,23 @@ public final class FloatingPetService extends Service {
         if (bubble == null || !alertActive) return;
         alertActive = false;
         alertView.setText("");
+        alertIcon.setImageDrawable(null);
         showPanel(-1);
     }
 
-    void showMusic(CharSequence title, CharSequence artist, Bitmap art, List<String> tracks) {
+    void showMusic(CharSequence title, CharSequence artist, Bitmap art, List<String> tracks,
+                   boolean playing, long actions) {
         if (bubble == null) return;
         queue = tracks;
         hasMusic = title != null;
         cassette.setArtwork(art);
+        cassette.setPlaying(playing);
+        playPause.setText(playing ? "Ⅱ" : "▶");
+        playPause.setContentDescription(playing ? "Jeda" : "Putar");
+        long toggle = playing ? PlaybackState.ACTION_PAUSE : PlaybackState.ACTION_PLAY;
+        setPlaybackEnabled(previousTrack, (actions & PlaybackState.ACTION_SKIP_TO_PREVIOUS) != 0);
+        setPlaybackEnabled(playPause, (actions & (toggle | PlaybackState.ACTION_PLAY_PAUSE)) != 0);
+        setPlaybackEnabled(nextTrack, (actions & PlaybackState.ACTION_SKIP_TO_NEXT) != 0);
         if (title == null) queueOpen = false;
         else musicView.setText(title + (artist == null || artist.length() == 0 ? "" : "\n" + artist));
         refreshQueue();
@@ -232,12 +283,12 @@ public final class FloatingPetService extends Service {
     }
 
     private void showPanel(int direction) {
-        alertView.setVisibility(alertActive ? View.VISIBLE : View.GONE);
+        alertPanel.setVisibility(alertActive ? View.VISIBLE : View.GONE);
         musicPanel.setVisibility(!alertActive && hasMusic ? View.VISIBLE : View.GONE);
         updateBubble();
-        View active = alertActive ? alertView : hasMusic ? musicPanel : null;
+        View active = alertActive ? alertPanel : hasMusic ? musicPanel : null;
         if (direction != 0) {
-            alertView.animate().cancel();
+            alertPanel.animate().cancel();
             musicPanel.animate().cancel();
             if (active != null) {
                 active.setTranslationX(dp(22) * direction);
@@ -263,7 +314,8 @@ public final class FloatingPetService extends Service {
         Point bounds = movementBounds();
         int width = bounds.x + params.width;
         int height = bounds.y + params.height;
-        bubbleParams.width = Math.min(dp(208), width);
+        int requestedWidth = alertActive && alertView.getVisibility() == View.GONE ? 52 : 208;
+        bubbleParams.width = Math.min(dp(requestedWidth), width);
         bubble.measure(View.MeasureSpec.makeMeasureSpec(bubbleParams.width, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.AT_MOST));
         int bubbleHeight = bubble.getMeasuredHeight();

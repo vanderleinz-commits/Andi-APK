@@ -16,6 +16,14 @@ final class CassetteView extends View {
     private final Path artworkClip = new Path();
     private final Rect bitmapCrop = new Rect();
     private Bitmap artwork;
+    private boolean playing;
+    private float angle;
+
+    void setPlaying(boolean playing) {
+        if (this.playing == playing) return;
+        this.playing = playing;
+        invalidate();
+    }
 
     CassetteView(Context context) {
         super(context);
@@ -58,11 +66,11 @@ final class CassetteView extends View {
         paint.setColor(0xd91b2335);
         canvas.drawRoundRect(20, 40, 80, 60, 8, 8, paint);
         final boolean motion = android.animation.ValueAnimator.areAnimatorsEnabled();
-        float angle = motion ? (SystemClock.uptimeMillis() % 1500L) * 0.24f : 0f;
+        if (motion && playing) angle = (SystemClock.uptimeMillis() % 1500L) * 0.24f;
         drawReel(canvas, 32, angle);
         drawReel(canvas, 68, -angle);
         canvas.restore();
-        if (motion && isShown() && getWindowVisibility() == VISIBLE) postInvalidateDelayed(32);
+        if (playing && motion && isShown() && getWindowVisibility() == VISIBLE) postInvalidateDelayed(32);
     }
 
     @Override protected void onVisibilityChanged(View changedView, int visibility) {
