@@ -39,17 +39,7 @@ public final class PhoneEvents extends NotificationListenerService {
         musicShown = false;
         if (connected == this && overlay != null) overlay.showMusic(null, null, null, false, 0);
     };
-    private final java.util.LinkedHashMap<String, RecentMessage> recentMessages = new java.util.LinkedHashMap<>();
-
-    private static final class RecentMessage {
-        final String body;
-        final long time;
-
-        RecentMessage(String body, long time) {
-            this.body = body;
-            this.time = time;
-        }
-    }
+    private final NotificationDeduplicator recentMessages = new NotificationDeduplicator();
 
     private final MediaController.Callback changes = new MediaController.Callback() {
         @Override public void onMetadataChanged(MediaMetadata value) { publishMusic(); }
@@ -159,8 +149,9 @@ public final class PhoneEvents extends NotificationListenerService {
         }
         CharSequence body = "";
         CharSequence sender = null;
+        Notification.MessagingStyle.Message message = null;
         try {
-            Notification.MessagingStyle.Message message = latestMessage(notification.extras);
+            message = latestMessage(notification.extras);
             body = message == null ? notificationBody(notification) : message.getText();
             sender = senderName(notification, message, body);
         } catch (RuntimeException error) {
@@ -171,14 +162,18 @@ public final class PhoneEvents extends NotificationListenerService {
         String preview = previewMode == NotificationPreferences.MESSAGE ? boundedPreview(body, 180) : "";
         String senderPreview = previewMode >= NotificationPreferences.SENDER && sender != null
                 ? boundedPreview(sender, 70) : "";
-        String fingerprint = senderPreview + "\n" + preview;
-        String key = posted.getKey();
-        long now = android.os.SystemClock.elapsedRealtime();
-        RecentMessage previous = recentMessages.get(key);
-        if (previous != null && previous.body.equals(fingerprint) && now - previous.time < 1800) return;
-        recentMessages.put(key, new RecentMessage(fingerprint, now));
-        if (recentMessages.size() > 32) recentMessages.remove(recentMessages.keySet().iterator().next());
+        boolean summary = (notification.flags & Notification.FLAG_GROUP_SUMMARY) != 0;
+        String group = posted.isGroup() ? posted.getGroupKey() : null;
+        String text = body.toString();
+        String author = sender == null ? "" : sender.toString();
+        long messageTime = message == null ? 0 : message.getTimestamp();
+        if (!recentMessages.shouldShow(posted.getKey(), group, summary, author, text,
+                messageTime, android.os.SystemClock.elapsedRealtime())) return;
         overlay.showAlert(appIcon, source, senderPreview, preview);
+    }
+
+    @Override public void onNotificationRemoved(StatusBarNotification removed) {
+        recentMessages.remove(removed.getKey());
     }
 
     private Notification.MessagingStyle.Message latestMessage(Bundle extras) {
