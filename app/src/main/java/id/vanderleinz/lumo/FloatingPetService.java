@@ -88,6 +88,11 @@ public final class FloatingPetService extends Service {
     private boolean musicHidden;
     private WindowManager.LayoutParams bubbleParams;
     private final Handler main = new Handler(Looper.getMainLooper());
+    private final SharedPreferences.OnSharedPreferenceChangeListener previewSettingsChanged =
+            (settings, key) -> {
+                if (key == null || key.equals(NotificationPreferences.QUIET)
+                        || key.startsWith(NotificationPreferences.APP_PREFIX)) clearAlert();
+            };
     private final Runnable expireAlert = this::advanceAlert;
     private final BroadcastReceiver screenState = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
@@ -103,6 +108,7 @@ public final class FloatingPetService extends Service {
     public void onCreate() {
         super.onCreate();
         position = getSharedPreferences("pet_position", MODE_PRIVATE);
+        NotificationPreferences.get(this).registerOnSharedPreferenceChangeListener(previewSettingsChanged);
         IntentFilter screenOff = new IntentFilter(Intent.ACTION_SCREEN_OFF);
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(screenState, screenOff, RECEIVER_NOT_EXPORTED);
         else registerReceiver(screenState, screenOff);
@@ -488,6 +494,7 @@ public final class FloatingPetService extends Service {
     @Override
     public void onDestroy() {
         PhoneEvents.detach(this);
+        NotificationPreferences.get(this).unregisterOnSharedPreferenceChangeListener(previewSettingsChanged);
         if (petTouch != null) petTouch.cancelHold();
         unregisterReceiver(screenState);
         main.removeCallbacks(expireAlert);

@@ -2,11 +2,14 @@ package id.vanderleinz.lumo;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
@@ -19,7 +22,14 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Switch;
 import android.widget.Toast;
+
+import java.text.Collator;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 public final class MainActivity extends Activity {
     private static final int NAVY = 0xff10192b;
@@ -93,7 +103,23 @@ public final class MainActivity extends Activity {
         add(panel, phoneAccess, dp(54), 8);
         add(panel, label("Opsional. Bubble bisa menampilkan pratinjau pesan saat HP terbuka.", 13, MUTED), -2, 6);
 
-        TextView hint = label("Ketuk untuk menyapa • Geser untuk pindah\nTahan Andi untuk menyembunyikan", 14, MUTED);
+        SharedPreferences notificationSettings = NotificationPreferences.get(this);
+        Switch quiet = new Switch(this);
+        quiet.setText("Mode Tenang");
+        quiet.setTextColor(WHITE);
+        quiet.setChecked(notificationSettings.getBoolean(NotificationPreferences.QUIET, false));
+        quiet.setOnCheckedChangeListener((button, checked) -> notificationSettings.edit()
+                .putBoolean(NotificationPreferences.QUIET, checked).apply());
+        add(panel, quiet, dp(48), 14);
+        add(panel, label("Jeda bubble notifikasi sambil tetap menampilkan Andi dan musik.", 13, MUTED), -2, 2);
+
+        Button perApp = new Button(this);
+        perApp.setAllCaps(false);
+        perApp.setText("Notifikasi per aplikasi");
+        perApp.setOnClickListener(view -> chooseNotificationApp(notificationSettings));
+        add(panel, perApp, dp(48), 8);
+
+        TextView hint = label("Ketuk Andi untuk buka atau tutup musik • Geser untuk pindah\nTahan tiga detik untuk menyembunyikan Andi", 14, MUTED);
         hint.setLineSpacing(dp(3), 1);
         add(panel, hint, -2, 15);
         setContentView(scroll);
@@ -131,6 +157,48 @@ public final class MainActivity extends Activity {
     protected void onStop() {
         unregisterReceiver(stateReceiver);
         super.onStop();
+    }
+
+    private void chooseNotificationApp(SharedPreferences settings) {
+        PackageManager packages = getPackageManager();
+        Intent launcher = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+        Map<String, String> labels = new LinkedHashMap<>();
+        for (ResolveInfo entry : packages.queryIntentActivities(launcher, 0)) {
+            String packageName = entry.activityInfo.packageName;
+            if (!packageName.equals(getPackageName())) {
+                labels.putIfAbsent(packageName, entry.loadLabel(packages).toString());
+            }
+        }
+        if (labels.isEmpty()) {
+            Toast.makeText(this, "Belum ada aplikasi yang tersedia.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        ArrayList<String> appIds = new ArrayList<>(labels.keySet());
+        Collator order = Collator.getInstance();
+        appIds.sort(Comparator.comparing(labels::get, order));
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (String name : labels.values()) counts.merge(name, 1, Integer::sum);
+        CharSequence[] items = new CharSequence[appIds.size()];
+        for (int index = 0; index < appIds.size(); index++) {
+            String appId = appIds.get(index);
+            String name = labels.get(appId);
+            if (counts.get(name) > 1) name += " (" + appId + ")";
+            items[index] = name + " · " + NotificationPreferences.LABELS[
+                    NotificationPreferences.appPreview(settings, appId)];
+        }
+        new AlertDialog.Builder(this).setTitle("Notifikasi per aplikasi")
+                .setItems(items, (dialog, index) -> {
+                    String appId = appIds.get(index);
+                    new AlertDialog.Builder(this).setTitle(labels.get(appId))
+                            .setSingleChoiceItems(NotificationPreferences.LABELS,
+                                    NotificationPreferences.appPreview(settings, appId), null)
+                            .setNegativeButton("Batal", null)
+                            .setPositiveButton("Simpan", (options, button) -> {
+                                int mode = ((AlertDialog) options).getListView().getCheckedItemPosition();
+                                settings.edit().putInt(NotificationPreferences.APP_PREFIX + appId, mode).apply();
+                            }).show();
+                })
+                .setNegativeButton("Tutup", null).show();
     }
 
     private void toggleOverlay() {

@@ -37,7 +37,7 @@ public final class PhoneEvents extends NotificationListenerService {
     private final Runnable clearMusic = () -> {
         clearMusicPending = false;
         musicShown = false;
-        if (overlay != null) overlay.showMusic(null, null, null, false, 0);
+        if (connected == this && overlay != null) overlay.showMusic(null, null, null, false, 0);
     };
     private final java.util.LinkedHashMap<String, RecentMessage> recentMessages = new java.util.LinkedHashMap<>();
 
@@ -55,7 +55,15 @@ public final class PhoneEvents extends NotificationListenerService {
         @Override public void onMetadataChanged(MediaMetadata value) { publishMusic(); }
         @Override public void onQueueChanged(List<MediaSession.QueueItem> value) { publishMusic(); }
         @Override public void onPlaybackStateChanged(PlaybackState value) { publishMusic(); }
-        @Override public void onSessionDestroyed() { publishMusic(); }
+        @Override public void onSessionDestroyed() {
+            if (connected != PhoneEvents.this || manager == null) return;
+            try {
+                replaceControllers(manager.getActiveSessions(new ComponentName(PhoneEvents.this, PhoneEvents.class)));
+            } catch (SecurityException error) {
+                clearControllers();
+                publishMusic();
+            }
+        }
     };
 
     private final MediaSessionManager.OnActiveSessionsChangedListener sessions = this::replaceControllers;
@@ -130,6 +138,8 @@ public final class PhoneEvents extends NotificationListenerService {
                 || notification.visibility == Notification.VISIBILITY_SECRET
                 || getSystemService(KeyguardManager.class).isKeyguardLocked()) return;
         String packageName = posted.getPackageName();
+        int previewMode = NotificationPreferences.previewFor(NotificationPreferences.get(this), packageName);
+        if (previewMode == NotificationPreferences.OFF) return;
         String source = packageName;
         Drawable appIcon = null;
         PackageManager packages = getPackageManager();
@@ -158,8 +168,9 @@ public final class PhoneEvents extends NotificationListenerService {
         }
         if (((notification.flags & Notification.FLAG_GROUP_SUMMARY) != 0 || posted.isOngoing())
                 && body.length() == 0) return;
-        String preview = boundedPreview(body, 180);
-        String senderPreview = sender == null ? "" : boundedPreview(sender, 70);
+        String preview = previewMode == NotificationPreferences.MESSAGE ? boundedPreview(body, 180) : "";
+        String senderPreview = previewMode >= NotificationPreferences.SENDER && sender != null
+                ? boundedPreview(sender, 70) : "";
         String fingerprint = senderPreview + "\n" + preview;
         String key = posted.getKey();
         long now = android.os.SystemClock.elapsedRealtime();
