@@ -91,7 +91,7 @@ public final class MainActivity extends Activity {
             }
         });
         add(panel, phoneAccess, dp(54), 8);
-        add(panel, label("Opsional. Bubble pesan menampilkan nama aplikasi pengirim.", 13, MUTED), -2, 6);
+        add(panel, label("Opsional. Bubble bisa menampilkan pratinjau pesan saat HP terbuka.", 13, MUTED), -2, 6);
 
         TextView hint = label("Ketuk untuk menyapa • Geser untuk pindah\nTahan Andi untuk menyembunyikan", 14, MUTED);
         hint.setLineSpacing(dp(3), 1);

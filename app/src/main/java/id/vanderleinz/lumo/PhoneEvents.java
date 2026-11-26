@@ -65,7 +65,10 @@ public final class PhoneEvents extends NotificationListenerService {
         clearControllers();
         if (connected == this) {
             connected = null;
-            if (overlay != null) overlay.showMusic(null, null, Collections.emptyList());
+            if (overlay != null) {
+                overlay.clearAlert();
+                overlay.showMusic(null, null, null, Collections.emptyList());
+            }
         }
     }
 
@@ -90,13 +93,29 @@ public final class PhoneEvents extends NotificationListenerService {
                 || notification.visibility == Notification.VISIBILITY_SECRET
                 || (notification.flags & Notification.FLAG_GROUP_SUMMARY) != 0
                 || getSystemService(KeyguardManager.class).isKeyguardLocked()) return;
-        // Use the app name only so chat and verification content stays in Android's notification tray.
         String source = "aplikasi lain";
         PackageManager packages = getPackageManager();
         try {
             source = packages.getApplicationLabel(packages.getApplicationInfo(posted.getPackageName(), 0)).toString();
         } catch (PackageManager.NameNotFoundException ignored) { }
-        overlay.showAlert("Notifikasi baru · " + source);
+        if (notification.extras == null) {
+            overlay.showAlert(source, "");
+            return;
+        }
+        CharSequence title = notification.extras.getCharSequence(Notification.EXTRA_TITLE);
+        CharSequence body = notification.extras.getCharSequence(Notification.EXTRA_TEXT);
+        if (body == null || body.length() == 0) {
+            body = notification.extras.getCharSequence(Notification.EXTRA_BIG_TEXT);
+        }
+        String header = source;
+        if (title != null && title.length() > 0) {
+            header += " · " + boundedPreview(title, 72);
+        }
+        overlay.showAlert(header, body == null ? "" : boundedPreview(body, 180));
+    }
+
+    private String boundedPreview(CharSequence text, int limit) {
+        return text.subSequence(0, Math.min(text.length(), limit)).toString();
     }
 
     private void publishMusic() {
@@ -116,9 +135,9 @@ public final class PhoneEvents extends NotificationListenerService {
                     if (queue.size() == 20) break;
                 }
             }
-            overlay.showMusic(description.getTitle(), description.getSubtitle(), queue);
+            overlay.showMusic(description.getTitle(), description.getSubtitle(), description.getIconBitmap(), queue);
             return;
         }
-        overlay.showMusic(null, null, Collections.emptyList());
+        overlay.showMusic(null, null, null, Collections.emptyList());
     }
 }
