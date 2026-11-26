@@ -67,7 +67,7 @@ final class DiscView extends View {
         boolean animate = playing && android.animation.ValueAnimator.areAnimatorsEnabled()
                 && isShown() && getWindowVisibility() == VISIBLE;
         long now = SystemClock.uptimeMillis();
-        if (animate && lastFrame != 0) angle = (angle + Math.min(50, now - lastFrame) * 0.24f) % 360f;
+        if (animate && lastFrame != 0) angle = (angle + Math.min(50, now - lastFrame) * 0.08f) % 360f;
         lastFrame = animate ? now : 0;
         canvas.rotate(angle, 50, 50);
         paint.setColor(0xffc49779);

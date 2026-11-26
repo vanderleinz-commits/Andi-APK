@@ -25,7 +25,6 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.provider.Settings;
 import android.view.Display;
-import android.view.GestureDetector;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -60,11 +59,10 @@ public final class FloatingPetService extends Service {
     private LinearLayout alertPanel;
     private ImageView alertIcon;
     private TextView musicView;
+    private TextView artistView;
+    private PetTouch petTouch;
     private LinearLayout musicPanel;
     private DiscView disc;
-    private Button minimizeMusic;
-    private Button reopenMusic;
-    private TextView playlistView;
     private boolean bubbleOnRight;
     private boolean bubbleAdded;
     private final ArrayDeque<Alert> pendingAlerts = new ArrayDeque<>();
@@ -87,7 +85,7 @@ public final class FloatingPetService extends Service {
     private Button nextTrack;
     private boolean hasMusic;
     private boolean alertActive;
-    private boolean musicMinimized;
+    private boolean musicHidden;
     private WindowManager.LayoutParams bubbleParams;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Runnable expireAlert = this::advanceAlert;
@@ -156,13 +154,20 @@ public final class FloatingPetService extends Service {
         restorePosition();
 
         PetView companion = new PetView(overlayContext);
-        companion.setContentDescription("Andi. Ketuk untuk menyapa atau tahan untuk menyembunyikan.");
-        companion.setOnClickListener(view -> companion.react());
+        companion.setContentDescription("Andi. Ketuk untuk membuka atau menutup musik. Tahan tiga detik untuk menyembunyikan Andi.");
+        companion.setOnClickListener(view -> {
+            companion.react();
+            if (hasMusic) {
+                musicHidden = !musicHidden;
+                showPanel(0);
+            }
+        });
         companion.setOnLongClickListener(view -> {
             stopSelf();
             return true;
         });
-        companion.setOnTouchListener(new PetTouch());
+        petTouch = new PetTouch();
+        companion.setOnTouchListener(petTouch);
         windows.addView(companion, params);
         pet = companion;
         createBubble();
@@ -210,25 +215,18 @@ public final class FloatingPetService extends Service {
         musicView.setTextSize(12);
         musicView.setPadding(0, 0, 0, 0);
         musicDetails.addView(musicView);
-        playlistView = newBubbleText(1);
-        playlistView.setTextSize(11);
-        playlistView.setTextColor(0xffd6b7a4);
-        playlistView.setPadding(0, 0, 0, 0);
-        musicDetails.addView(playlistView);
-        minimizeMusic = newMusicButton("−", "Perkecil kartu musik");
-        row.addView(minimizeMusic, new LinearLayout.LayoutParams(dp(38), dp(44)));
-        minimizeMusic.setOnClickListener(view -> setMusicMinimized(true));
+        artistView = newBubbleText(1);
+        artistView.setTextSize(11);
+        artistView.setTextColor(0xffd6b7a4);
+        artistView.setPadding(0, 0, 0, 0);
+        musicDetails.addView(artistView);
         LinearLayout controls = new LinearLayout(overlayContext);
         musicPanel.addView(controls);
         previousTrack = addPlaybackButton(controls, "⏮", "Lagu sebelumnya", PlaybackState.ACTION_SKIP_TO_PREVIOUS);
         playPause = addPlaybackButton(controls, "▶", "Putar",
                 PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_PLAY_PAUSE);
         nextTrack = addPlaybackButton(controls, "⏭", "Lagu berikutnya", PlaybackState.ACTION_SKIP_TO_NEXT);
-        reopenMusic = newMusicButton("♫", "Buka kartu musik");
-        reopenMusic.setVisibility(View.GONE);
-        bubble.addView(reopenMusic, new LinearLayout.LayoutParams(-1, dp(42)));
-        reopenMusic.setOnClickListener(view -> setMusicMinimized(false));
-        bubbleParams = new WindowManager.LayoutParams(dp(196), WindowManager.LayoutParams.WRAP_CONTENT,
+        bubbleParams = new WindowManager.LayoutParams(dp(246), WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
                         | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
@@ -257,11 +255,6 @@ public final class FloatingPetService extends Service {
         button.setOnClickListener(view -> PhoneEvents.control(action));
         row.addView(button, new LinearLayout.LayoutParams(0, dp(38), 1));
         return button;
-    }
-
-    private void setMusicMinimized(boolean minimized) {
-        musicMinimized = minimized;
-        showPanel(0);
     }
 
     private void setPlaybackEnabled(Button button, boolean enabled) {
@@ -325,7 +318,7 @@ public final class FloatingPetService extends Service {
         showPanel(-1);
     }
 
-    void showMusic(CharSequence title, CharSequence artist, Bitmap art, CharSequence playlist,
+    void showMusic(CharSequence title, CharSequence artist, Bitmap art,
                    boolean playing, long actions) {
         if (bubble == null) return;
         hasMusic = title != null;
@@ -338,22 +331,21 @@ public final class FloatingPetService extends Service {
         setPlaybackEnabled(playPause, (actions & (toggle | PlaybackState.ACTION_PLAY_PAUSE)) != 0);
         setPlaybackEnabled(nextTrack, (actions & PlaybackState.ACTION_SKIP_TO_NEXT) != 0);
         if (title != null) {
-            musicView.setText(title + (artist == null || artist.length() == 0 ? "" : "\n" + artist));
-            playlistView.setText(playlist);
-            playlistView.setVisibility(playlist == null || playlist.length() == 0 ? View.GONE : View.VISIBLE);
+            musicView.setText(title);
+            artistView.setText(artist);
+            artistView.setVisibility(android.text.TextUtils.isEmpty(artist) ? View.GONE : View.VISIBLE);
         }
         showPanel(0);
     }
 
     private void showPanel(int direction) {
-        boolean showMusic = !alertActive && hasMusic;
+        boolean showMusic = !alertActive && hasMusic && !musicHidden;
         alertPanel.setVisibility(alertActive ? View.VISIBLE : View.GONE);
-        musicPanel.setVisibility(showMusic && !musicMinimized ? View.VISIBLE : View.GONE);
-        reopenMusic.setVisibility(showMusic && musicMinimized ? View.VISIBLE : View.GONE);
+        musicPanel.setVisibility(showMusic ? View.VISIBLE : View.GONE);
         updateBubble();
         if (direction == 0) return;
-        View active = alertActive ? alertPanel : showMusic ? (musicMinimized ? reopenMusic : musicPanel) : null;
-        for (View panel : new View[]{alertPanel, musicPanel, reopenMusic}) {
+        View active = alertActive ? alertPanel : showMusic ? musicPanel : null;
+        for (View panel : new View[]{alertPanel, musicPanel}) {
             panel.animate().cancel();
             panel.setTranslationX(0);
             panel.setAlpha(1);
@@ -367,7 +359,7 @@ public final class FloatingPetService extends Service {
 
     private void updateBubble() {
         if (bubble == null) return;
-        boolean visible = alertActive || hasMusic;
+        boolean visible = alertActive || (hasMusic && !musicHidden);
         if (!visible) {
             bubble.setVisibility(View.GONE);
             return;
@@ -383,10 +375,10 @@ public final class FloatingPetService extends Service {
         int spaceRight = width - right - edge;
         bubbleOnRight = spaceRight >= spaceLeft;
         int available = Math.max(spaceLeft, spaceRight);
-        boolean compact = alertActive ? alertView.getVisibility() == View.GONE : musicMinimized;
-        int preferredWidth = dp(compact ? 46 : 196);
+        boolean compact = alertActive && alertView.getVisibility() == View.GONE;
+        int preferredWidth = dp(compact ? 46 : 246);
         boolean beside = available >= dp(compact ? 40 : 112);
-        if (!alertActive && !musicMinimized) {
+        if (!alertActive && !musicHidden) {
             // Keep controls usable in the smallest supported side layout.
             disc.setVisibility(beside && available < dp(148) ? View.GONE : View.VISIBLE);
         }
@@ -496,6 +488,7 @@ public final class FloatingPetService extends Service {
     @Override
     public void onDestroy() {
         PhoneEvents.detach(this);
+        if (petTouch != null) petTouch.cancelHold();
         unregisterReceiver(screenState);
         main.removeCallbacks(expireAlert);
         if (bubble != null && bubbleAdded) windows.removeViewImmediate(bubble);
@@ -516,49 +509,45 @@ public final class FloatingPetService extends Service {
 
     private final class PetTouch implements View.OnTouchListener {
         private final int slop = ViewConfiguration.get(FloatingPetService.this).getScaledTouchSlop();
-        private final GestureDetector gestures = new GestureDetector(FloatingPetService.this,
-                new GestureDetector.SimpleOnGestureListener() {
-                    @Override
-                    public boolean onDown(MotionEvent event) {
-                        return true;
-                    }
-
-                    @Override
-                    public boolean onSingleTapUp(MotionEvent event) {
-                        return pet != null && pet.performClick();
-                    }
-
-                    @Override
-                    public void onLongPress(MotionEvent event) {
-                        if (pet != null) pet.performLongClick();
-                    }
-                });
-
         private float downX;
         private float downY;
         private int initialX;
         private int initialY;
+        private boolean tracking;
         private boolean dragging;
+        private boolean held;
+        private final Runnable hold = () -> {
+            if (pet != null && tracking && !dragging) {
+                held = true;
+                pet.performLongClick();
+            }
+        };
+
+        private void cancelHold() {
+            main.removeCallbacks(hold);
+        }
 
         @Override
         public boolean onTouch(View view, MotionEvent event) {
+            if (pet == null) return false;
             switch (event.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
                     downX = event.getRawX();
                     downY = event.getRawY();
                     initialX = params.x;
                     initialY = params.y;
+                    tracking = true;
                     dragging = false;
-                    gestures.onTouchEvent(event);
+                    held = false;
+                    cancelHold();
+                    main.postDelayed(hold, 3000);
                     break;
                 case MotionEvent.ACTION_MOVE:
+                    if (!tracking || held) break;
                     float dx = event.getRawX() - downX;
                     float dy = event.getRawY() - downY;
                     if (!dragging && dx * dx + dy * dy > slop * slop) {
-                        MotionEvent cancel = MotionEvent.obtain(event);
-                        cancel.setAction(MotionEvent.ACTION_CANCEL);
-                        gestures.onTouchEvent(cancel);
-                        cancel.recycle();
+                        cancelHold();
                         dragging = true;
                         pet.setDragging(true);
                     }
@@ -568,22 +557,23 @@ public final class FloatingPetService extends Service {
                         params.y = clamp(initialY + Math.round(dy), bounds.y);
                         windows.updateViewLayout(view, params);
                         updateBubble();
-                    } else {
-                        gestures.onTouchEvent(event);
                     }
                     break;
+                case MotionEvent.ACTION_POINTER_DOWN:
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_CANCEL:
+                    cancelHold();
                     if (dragging) {
                         savePosition();
                         pet.setDragging(false);
-                        dragging = false;
-                    } else {
-                        gestures.onTouchEvent(event);
+                    } else if (tracking && !held && event.getActionMasked() == MotionEvent.ACTION_UP) {
+                        view.performClick();
                     }
+                    tracking = false;
+                    dragging = false;
                     break;
                 default:
-                    if (!dragging) gestures.onTouchEvent(event);
+                    break;
             }
             return true;
         }

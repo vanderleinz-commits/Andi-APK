@@ -30,6 +30,13 @@ public final class PhoneEvents extends NotificationListenerService {
     private final List<MediaController> controllers = new ArrayList<>();
     private MediaSessionManager manager;
     private MediaController selected;
+    private boolean musicShown;
+    private boolean clearMusicPending;
+    private final Runnable clearMusic = () -> {
+        clearMusicPending = false;
+        musicShown = false;
+        if (overlay != null) overlay.showMusic(null, null, null, false, 0);
+    };
     private final java.util.LinkedHashMap<String, RecentMessage> recentMessages = new java.util.LinkedHashMap<>();
 
     private static final class RecentMessage {
@@ -57,7 +64,14 @@ public final class PhoneEvents extends NotificationListenerService {
     }
 
     static void detach(FloatingPetService service) {
-        if (overlay == service) overlay = null;
+        if (overlay == service) {
+            overlay = null;
+            if (connected != null) {
+                connected.main.removeCallbacks(connected.clearMusic);
+                connected.musicShown = false;
+                connected.clearMusicPending = false;
+            }
+        }
     }
 
     @Override public void onListenerConnected() {
@@ -78,6 +92,9 @@ public final class PhoneEvents extends NotificationListenerService {
     private void disconnect() {
         if (manager != null) manager.removeOnActiveSessionsChangedListener(sessions);
         manager = null;
+        main.removeCallbacks(clearMusic);
+        clearMusicPending = false;
+        musicShown = false;
         recentMessages.clear();
         selected = null;
         clearControllers();
@@ -85,7 +102,7 @@ public final class PhoneEvents extends NotificationListenerService {
             connected = null;
             if (overlay != null) {
                 overlay.clearAlert();
-                overlay.showMusic(null, null, null, null, false, 0);
+                overlay.showMusic(null, null, null, false, 0);
             }
         }
     }
@@ -223,11 +240,14 @@ public final class PhoneEvents extends NotificationListenerService {
             MediaMetadata metadata = controller.getMetadata();
             CharSequence title = metadata == null ? null : metadata.getDescription().getTitle();
             if (state != null && title != null && title.length() > 0) {
-                publishTrack(controller, state, metadata);
+                publishTrack(state, metadata);
                 return;
             }
         }
-        overlay.showMusic(null, null, null, null, false, 0);
+        if (musicShown && !clearMusicPending) {
+            clearMusicPending = true;
+            main.postDelayed(clearMusic, 2200);
+        }
     }
 
     private MediaController firstSession(int targetState) {
@@ -246,12 +266,17 @@ public final class PhoneEvents extends NotificationListenerService {
         return state == null ? PlaybackState.STATE_NONE : state.getState();
     }
 
-    private void publishTrack(MediaController controller, PlaybackState state, MediaMetadata metadata) {
+    private void publishTrack(PlaybackState state, MediaMetadata metadata) {
         MediaDescription description = metadata.getDescription();
         android.graphics.Bitmap art = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
         if (art == null) art = description.getIconBitmap();
-        overlay.showMusic(description.getTitle(), description.getSubtitle(), art,
-                controller.getQueueTitle(), state.getState() == PlaybackState.STATE_PLAYING, state.getActions());
+        CharSequence artist = metadata.getText(MediaMetadata.METADATA_KEY_ARTIST);
+        if (android.text.TextUtils.isEmpty(artist)) artist = metadata.getText(MediaMetadata.METADATA_KEY_ALBUM_ARTIST);
+        if (android.text.TextUtils.isEmpty(artist)) artist = description.getSubtitle();
+        main.removeCallbacks(clearMusic);
+        clearMusicPending = false;
+        musicShown = true;
+        overlay.showMusic(description.getTitle(), artist, art, state.getState() == PlaybackState.STATE_PLAYING, state.getActions());
     }
 
     static void control(long action) {

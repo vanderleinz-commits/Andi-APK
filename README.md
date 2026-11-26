@@ -1,8 +1,8 @@
-# Andi Android · trial 0.2.3
+# Andi Android · trial 0.2.4
 
 Push proyek ke repo GitHub dengan GitHub Actions aktif untuk membangun APK di server GitHub. Workflow **Build Andi debug APK** berjalan saat push ke `main` dan dapat dijalankan manual dari tab **Actions**. Setelah build sukses, unduh artefak **Andi-debug**, ekstrak, lalu buka `Andi-debug.apk` di HP.
 
-Andi adalah robot pari berwarna dark blue dan cocoa brown. Ketuk untuk menyapa, geser untuk memindahkan, atau tahan untuk menyembunyikan. Setelah didiamkan, Andi tidur. Bubble mengikuti posisi Andi saat melayang.
+Andi adalah robot pari berwarna dark blue dan cocoa brown. Ketuk untuk membuka atau menyembunyikan kartu musik, geser untuk memindahkan Andi, atau tahan tiga detik untuk menyembunyikan Andi. Setelah didiamkan, Andi tidur. Bubble mengikuti posisi Andi saat melayang.
 
 ## Build APK debug
 
@@ -18,7 +18,7 @@ Trial ini menargetkan Android 8.0 ke atas. Buka APK debug yang sudah dibuat, lal
 1. Pilih **Buka pengaturan izin**, aktifkan **Tampilkan di atas aplikasi lain** untuk Andi, kembali ke app, lalu pilih **Tampilkan Andi**.
 2. Pilih **Akses notifikasi dan musik** dan aktifkan Andi di pengaturan Android jika ingin mencoba bubble notifikasi dan musik.
 3. Dengan layar terbuka, kirim pesan tes ke HP. Bubble menampilkan ikon aplikasi, nama pengirim jika tersedia, dan isi pesan selama 3,5 detik, lalu kembali ke kartu musik jika tersedia.
-4. Putar lagu dari aplikasi musik untuk melihat CD berputar. Foto album muncul jika pemutar menyediakannya. Ketuk **−** untuk memperkecil kartu, lalu ketuk **♫** untuk membukanya lagi. Nama playlist tampil jika pemutar menyediakannya. Geser Andi untuk melihat kartu pindah sisi. Coba juga tombol jeda, lanjut, sebelumnya, dan berikutnya.
-5. Geser Andi, putar layar, lalu tahan karakter untuk menyembunyikan. Beberapa layar sistem dan aplikasi dapat menyembunyikan overlay.
+4. Putar lagu dari aplikasi musik untuk melihat CD berputar. Foto album muncul jika pemutar menyediakannya. Judul lagu dan nama artis tampil jika pemutar menyediakannya. Ketuk Andi sekali untuk menyembunyikan kartu musik, dan sekali lagi untuk membukanya. Geser Andi untuk melihat kartu pindah sisi. Coba juga tombol jeda, lanjut, sebelumnya, dan berikutnya.
+5. Geser Andi, putar layar, lalu tahan karakter selama tiga detik untuk menyembunyikan. Beberapa layar sistem dan aplikasi dapat menyembunyikan overlay.
 
 Izin akses notifikasi Android terpisah dari izin Andi untuk menampilkan notifikasinya sendiri. Akses notifikasi dan sesi musik diproses di perangkat, tanpa menyimpan isi pesan. Build APK dan perilaku perangkat asli perlu diuji dengan toolchain Android dan HP yang terhubung.
