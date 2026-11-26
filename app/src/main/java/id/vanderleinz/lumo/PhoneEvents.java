@@ -13,6 +13,9 @@ import android.media.session.MediaSession;
 import android.media.session.MediaSessionManager;
 import android.media.session.PlaybackState;
 import android.os.Handler;
+import android.os.Bundle;
+import android.util.Log;
+import android.view.KeyEvent;
 import android.os.Looper;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
@@ -28,6 +31,17 @@ public final class PhoneEvents extends NotificationListenerService {
     private final List<MediaController> controllers = new ArrayList<>();
     private MediaSessionManager manager;
     private MediaController selected;
+    private final java.util.LinkedHashMap<String, RecentMessage> recentMessages = new java.util.LinkedHashMap<>();
+
+    private static final class RecentMessage {
+        final String body;
+        final long time;
+
+        RecentMessage(String body, long time) {
+            this.body = body;
+            this.time = time;
+        }
+    }
 
     private final MediaController.Callback changes = new MediaController.Callback() {
         @Override public void onMetadataChanged(MediaMetadata value) { publishMusic(); }
@@ -65,6 +79,8 @@ public final class PhoneEvents extends NotificationListenerService {
     private void disconnect() {
         if (manager != null) manager.removeOnActiveSessionsChangedListener(sessions);
         manager = null;
+        recentMessages.clear();
+        selected = null;
         clearControllers();
         if (connected == this) {
             connected = null;
@@ -90,11 +106,10 @@ public final class PhoneEvents extends NotificationListenerService {
     }
 
     @Override public void onNotificationPosted(StatusBarNotification posted) {
-        if (overlay == null || posted.getPackageName().equals(getPackageName()) || posted.isOngoing()) return;
+        if (overlay == null || posted.getPackageName().equals(getPackageName())) return;
         Notification notification = posted.getNotification();
         if (Notification.CATEGORY_TRANSPORT.equals(notification.category)
                 || notification.visibility == Notification.VISIBILITY_SECRET
-                || (notification.flags & Notification.FLAG_GROUP_SUMMARY) != 0
                 || getSystemService(KeyguardManager.class).isKeyguardLocked()) return;
         String source = "aplikasi lain";
         Drawable appIcon = null;
@@ -109,15 +124,52 @@ public final class PhoneEvents extends NotificationListenerService {
                 appIcon = notification.getSmallIcon().loadDrawable(this);
             } catch (RuntimeException ignored) { }
         }
-        if (notification.extras == null) {
-            overlay.showAlert(appIcon, source, "");
-            return;
+        CharSequence body = "";
+        try {
+            body = notificationBody(notification);
+        } catch (RuntimeException error) {
+            Log.w("AndiNotifications", "Could not decode notification details", error);
         }
-        CharSequence body = notification.extras.getCharSequence(Notification.EXTRA_TEXT);
-        if (body == null || body.length() == 0) {
-            body = notification.extras.getCharSequence(Notification.EXTRA_BIG_TEXT);
+        if (((notification.flags & Notification.FLAG_GROUP_SUMMARY) != 0 || posted.isOngoing())
+                && body.length() == 0) return;
+        String preview = boundedPreview(body, 180);
+        String key = posted.getKey();
+        long now = android.os.SystemClock.elapsedRealtime();
+        RecentMessage previous = recentMessages.get(key);
+        if (previous != null && previous.body.equals(preview) && now - previous.time < 1800) return;
+        recentMessages.put(key, new RecentMessage(preview, now));
+        if (recentMessages.size() > 32) recentMessages.remove(recentMessages.keySet().iterator().next());
+        overlay.showAlert(appIcon, source, preview);
+    }
+
+    private CharSequence notificationBody(Notification notification) {
+        Bundle extras = notification.extras;
+        if (extras == null) return "";
+        android.os.Parcelable[] parcels = extras.getParcelableArray(Notification.EXTRA_MESSAGES);
+        if (android.os.Build.VERSION.SDK_INT >= 30 && parcels != null) {
+            List<Notification.MessagingStyle.Message> messages =
+                    Notification.MessagingStyle.Message.getMessagesFromBundleArray(parcels);
+            for (int index = messages.size() - 1; index >= 0; index--) {
+                CharSequence message = messages.get(index).getText();
+                if (message != null && message.length() > 0) return message;
+            }
         }
-        overlay.showAlert(appIcon, source, body == null ? "" : boundedPreview(body, 180));
+        boolean summary = (notification.flags & Notification.FLAG_GROUP_SUMMARY) != 0;
+        if (!summary) {
+            CharSequence expanded = extras.getCharSequence(Notification.EXTRA_BIG_TEXT);
+            if (expanded != null && expanded.length() > 0) return expanded;
+            CharSequence text = extras.getCharSequence(Notification.EXTRA_TEXT);
+            if (text != null && text.length() > 0) return text;
+        }
+        CharSequence[] lines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES);
+        if (lines != null) {
+            for (int index = lines.length - 1; index >= 0; index--) {
+                if (lines[index] != null && lines[index].length() > 0) return lines[index];
+            }
+        }
+        if (summary) return "";
+        CharSequence title = extras.getCharSequence(Notification.EXTRA_TITLE);
+        return title == null ? "" : title;
     }
 
     private String boundedPreview(CharSequence text, int limit) {
@@ -125,6 +177,14 @@ public final class PhoneEvents extends NotificationListenerService {
     }
 
     private void publishMusic() {
+        try {
+            refreshMusic();
+        } catch (RuntimeException error) {
+            Log.w("AndiMusic", "Could not read the current media session", error);
+        }
+    }
+
+    private void refreshMusic() {
         if (overlay == null || connected != this) return;
         MediaController active = firstSession(PlaybackState.STATE_PLAYING);
         if (active == null && selected != null && controllers.contains(selected)
@@ -136,7 +196,7 @@ public final class PhoneEvents extends NotificationListenerService {
             MediaMetadata metadata = controller.getMetadata();
             CharSequence title = metadata == null ? null : metadata.getDescription().getTitle();
             if (state != null && title != null && title.length() > 0) {
-                publishTrack(controller, state, metadata.getDescription());
+                publishTrack(controller, state, metadata);
                 return;
             }
         }
@@ -159,7 +219,8 @@ public final class PhoneEvents extends NotificationListenerService {
         return state == null ? PlaybackState.STATE_NONE : state.getState();
     }
 
-    private void publishTrack(MediaController controller, PlaybackState state, MediaDescription description) {
+    private void publishTrack(MediaController controller, PlaybackState state, MediaMetadata metadata) {
+        MediaDescription description = metadata.getDescription();
         List<String> queue = new ArrayList<>();
         List<MediaSession.QueueItem> items = controller.getQueue();
         if (items != null) {
@@ -169,24 +230,44 @@ public final class PhoneEvents extends NotificationListenerService {
                 if (queue.size() == 20) break;
             }
         }
-        overlay.showMusic(description.getTitle(), description.getSubtitle(), description.getIconBitmap(),
+        android.graphics.Bitmap art = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
+        if (art == null) art = description.getIconBitmap();
+        overlay.showMusic(description.getTitle(), description.getSubtitle(), art,
                 queue, state.getState() == PlaybackState.STATE_PLAYING, state.getActions());
     }
 
     static void control(long action) {
-        if (connected == null || connected.selected == null) return;
-        MediaController controller = connected.selected;
+        PhoneEvents listener = connected;
+        if (listener == null || listener.selected == null) return;
+        try {
+            listener.sendControl(action);
+        } catch (RuntimeException error) {
+            Log.w("AndiMusic", "Player rejected the requested control", error);
+            listener.publishMusic();
+        }
+    }
+
+    private void sendControl(long action) {
+        MediaController controller = selected;
         PlaybackState state = controller.getPlaybackState();
         if (state == null || (state.getActions() & action) == 0) return;
         MediaController.TransportControls controls = controller.getTransportControls();
-        if (action == PlaybackState.ACTION_SKIP_TO_PREVIOUS) controls.skipToPrevious();
-        else if (action == PlaybackState.ACTION_SKIP_TO_NEXT) controls.skipToNext();
-        else {
+        if (action == PlaybackState.ACTION_SKIP_TO_PREVIOUS) {
+            controls.skipToPrevious();
+        } else if (action == PlaybackState.ACTION_SKIP_TO_NEXT) {
+            controls.skipToNext();
+        } else {
             boolean playing = state.getState() == PlaybackState.STATE_PLAYING;
             long toggle = playing ? PlaybackState.ACTION_PAUSE : PlaybackState.ACTION_PLAY;
-            if ((state.getActions() & (toggle | PlaybackState.ACTION_PLAY_PAUSE)) == 0) return;
-            if (playing) controls.pause();
-            else controls.play();
+            if ((state.getActions() & toggle) != 0) {
+                if (playing) controls.pause();
+                else controls.play();
+            } else if ((state.getActions() & PlaybackState.ACTION_PLAY_PAUSE) != 0) {
+                int key = KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE;
+                if (controller.dispatchMediaButtonEvent(new KeyEvent(KeyEvent.ACTION_DOWN, key))) {
+                    controller.dispatchMediaButtonEvent(new KeyEvent(KeyEvent.ACTION_UP, key));
+                }
+            }
         }
     }
 }
