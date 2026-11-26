@@ -1,6 +1,7 @@
 package id.vanderleinz.lumo;
 
 import android.app.Notification;
+import android.app.ActivityOptions;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -23,6 +24,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.view.Display;
 import android.view.Gravity;
@@ -40,13 +42,21 @@ import android.widget.ImageView;
 import android.util.Log;
 import android.app.KeyguardManager;
 import java.util.ArrayDeque;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 
 public final class FloatingPetService extends Service {
     static final String ACTION_STATE = "id.vanderleinz.andi.OVERLAY_STATE";
+    static final String ACTION_START_FOCUS = "id.vanderleinz.andi.START_FOCUS";
+    static final String ACTION_CANCEL_FOCUS = "id.vanderleinz.andi.CANCEL_FOCUS";
+    private static final long FOCUS_LENGTH_MS = 25 * 60_000L;
+    private static long focusEnd;
     private static final String ACTION_HIDE = "id.vanderleinz.andi.HIDE";
     private static final String CHANNEL = "floating_andi";
     private static final int NOTIFICATION_ID = 10;
+    private static final int FOCUS_DONE_ID = 11;
+    private static final String FOCUS_CHANNEL = "focus_andi";
     private static boolean showing;
 
     private Context overlayContext;
@@ -65,6 +75,19 @@ public final class FloatingPetService extends Service {
     private DiscView disc;
     private boolean bubbleOnRight;
     private boolean bubbleAdded;
+    private boolean keyboardOrFullscreen;
+    private boolean tucked;
+    private Alert currentAlert;
+    private final Map<String, QuietCount> quietCounts = new LinkedHashMap<>();
+
+    private static final class QuietCount {
+        final String label;
+        int count;
+
+        QuietCount(String label) {
+            this.label = label;
+        }
+    }
     private final ArrayDeque<Alert> pendingAlerts = new ArrayDeque<>();
 
     private static final class Alert {
@@ -72,12 +95,14 @@ public final class FloatingPetService extends Service {
         final String source;
         final String sender;
         final String message;
+        final PendingIntent destination;
 
-        Alert(Drawable icon, String source, String sender, String message) {
+        Alert(Drawable icon, String source, String sender, String message, PendingIntent destination) {
             this.icon = icon;
             this.source = source;
             this.sender = sender;
             this.message = message;
+            this.destination = destination;
         }
     }
     private Button previousTrack;
@@ -90,15 +115,57 @@ public final class FloatingPetService extends Service {
     private final Handler main = new Handler(Looper.getMainLooper());
     private final SharedPreferences.OnSharedPreferenceChangeListener previewSettingsChanged =
             (settings, key) -> {
-                if (key == null || key.equals(NotificationPreferences.QUIET)
-                        || key.startsWith(NotificationPreferences.APP_PREFIX)) clearAlert();
+                if (key == null || key.startsWith(NotificationPreferences.APP_PREFIX)) clearAlert();
+                if (NotificationPreferences.AUTO_TUCK.equals(key)) updateTuckedState();
+                if (NotificationPreferences.QUIET.equals(key)) {
+                    clearAlert();
+                    if (settings.getBoolean(NotificationPreferences.QUIET, false)) quietCounts.clear();
+                    else showQuietSummary();
+                }
             };
     private final Runnable expireAlert = this::advanceAlert;
+    private final Runnable finishFocus = () -> {
+        changeFocus(false);
+        showAlert(null, "Andi", "Fokus selesai", "Waktunya istirahat.", null);
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        manager.createNotificationChannel(new NotificationChannel(
+                FOCUS_CHANNEL, "Sesi fokus Andi", NotificationManager.IMPORTANCE_DEFAULT));
+        manager.notify(FOCUS_DONE_ID, new Notification.Builder(this, FOCUS_CHANNEL)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle("Fokus selesai")
+                .setContentText("Waktunya istirahat.")
+                .setAutoCancel(true)
+                .build());
+    };
     private final BroadcastReceiver screenState = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
-            clearAlert();
+            if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) clearAlert();
+            else if (focusEnd != 0) {
+                main.removeCallbacks(finishFocus);
+                main.postDelayed(finishFocus, focusRemaining());
+            }
         }
     };
+
+    static boolean isFocusing() {
+        return focusEnd != 0;
+    }
+
+    static long focusRemaining() {
+        return Math.max(0, focusEnd - SystemClock.elapsedRealtime());
+    }
+
+    private void changeFocus(boolean start) {
+        main.removeCallbacks(finishFocus);
+        focusEnd = start ? SystemClock.elapsedRealtime() + FOCUS_LENGTH_MS : 0;
+        if (start) {
+            clearAlert();
+            main.postDelayed(finishFocus, FOCUS_LENGTH_MS);
+        }
+        updateTuckedState();
+        getSystemService(NotificationManager.class).notify(NOTIFICATION_ID, createNotification());
+        publishState(pet != null);
+    }
 
     static boolean isShowing() {
         return showing;
@@ -110,6 +177,7 @@ public final class FloatingPetService extends Service {
         position = getSharedPreferences("pet_position", MODE_PRIVATE);
         NotificationPreferences.get(this).registerOnSharedPreferenceChangeListener(previewSettingsChanged);
         IntentFilter screenOff = new IntentFilter(Intent.ACTION_SCREEN_OFF);
+        screenOff.addAction(Intent.ACTION_SCREEN_ON);
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(screenState, screenOff, RECEIVER_NOT_EXPORTED);
         else registerReceiver(screenState, screenOff);
     }
@@ -130,6 +198,11 @@ public final class FloatingPetService extends Service {
             }
             if (Settings.canDrawOverlays(this)) {
                 if (pet == null) showPet();
+                if (intent != null && ACTION_START_FOCUS.equals(intent.getAction()) && focusEnd == 0) {
+                    changeFocus(true);
+                } else if (intent != null && ACTION_CANCEL_FOCUS.equals(intent.getAction())) {
+                    changeFocus(false);
+                }
             } else {
                 stopSelf();
             }
@@ -154,8 +227,10 @@ public final class FloatingPetService extends Service {
         int size = Math.round(104 * overlayContext.getResources().getDisplayMetrics().density);
         params = new WindowManager.LayoutParams(size, size,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                        | WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM,
                 PixelFormat.TRANSLUCENT);
+        params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
         params.gravity = Gravity.TOP | Gravity.LEFT;
         restorePosition();
 
@@ -174,9 +249,22 @@ public final class FloatingPetService extends Service {
         });
         petTouch = new PetTouch();
         companion.setOnTouchListener(petTouch);
+        companion.setOnApplyWindowInsetsListener((view, insets) -> {
+            if (Build.VERSION.SDK_INT >= 30) {
+                boolean obstructed = insets.isVisible(WindowInsets.Type.ime())
+                        || (!insets.isVisible(WindowInsets.Type.statusBars())
+                            && !insets.isVisible(WindowInsets.Type.navigationBars()));
+                if (keyboardOrFullscreen != obstructed) {
+                    keyboardOrFullscreen = obstructed;
+                    main.post(this::updateTuckedState);
+                }
+            }
+            return view.onApplyWindowInsets(insets);
+        });
         windows.addView(companion, params);
         pet = companion;
         createBubble();
+        companion.requestApplyInsets();
         PhoneEvents.attach(this);
         publishState(true);
     }
@@ -194,6 +282,8 @@ public final class FloatingPetService extends Service {
         alertPanel.setGravity(Gravity.CENTER_VERTICAL);
         alertPanel.setMinimumHeight(dp(42));
         alertPanel.setVisibility(View.GONE);
+        alertPanel.setOnClickListener(view -> activateAlert());
+        alertPanel.setOnTouchListener(new AlertSwipe());
         bubble.addView(alertPanel);
         alertIcon = new ImageView(overlayContext);
         alertIcon.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -278,14 +368,89 @@ public final class FloatingPetService extends Service {
         return view;
     }
 
-    void showAlert(Drawable appIcon, String source, String sender, String message) {
+    void countQuietNotification(String packageName, String source) {
+        QuietCount count = quietCounts.computeIfAbsent(packageName, key -> new QuietCount(source));
+        if (count.count < 9999) count.count++;
+    }
+
+    private void showQuietSummary() {
+        if (quietCounts.isEmpty()) return;
+        StringBuilder message = new StringBuilder();
+        int remaining = quietCounts.size();
+        for (QuietCount count : quietCounts.values()) {
+            if (quietCounts.size() - remaining == 3) break;
+            if (message.length() > 0) message.append(" · ");
+            message.append(count.count).append(" ").append(count.label);
+            remaining--;
+        }
+        if (remaining > 0) message.append(" · +").append(remaining).append(" aplikasi");
+        quietCounts.clear();
+        showAlert(null, "Andi", "Selama Mode Tenang", message.toString(), null);
+    }
+
+    private void updateTuckedState() {
+        if (pet == null) return;
+        boolean automatic = NotificationPreferences.get(this).getBoolean(NotificationPreferences.AUTO_TUCK, true);
+        boolean next = focusEnd != 0 || (automatic && keyboardOrFullscreen);
+        if (tucked == next) return;
+        tucked = next;
+        params.alpha = tucked ? 0f : 1f;
+        if (tucked) {
+            petTouch.cancelHold();
+            params.flags |= WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
+        } else {
+            params.flags &= ~WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
+        }
+        try {
+            windows.updateViewLayout(pet, params);
+        } catch (IllegalArgumentException | SecurityException error) {
+            Log.w("AndiOverlay", "Could not update Andi visibility", error);
+        }
+        if (tucked) {
+            // Return any current card to the front of the queue until it can be read.
+            main.removeCallbacks(expireAlert);
+            if (currentAlert != null) pendingAlerts.addFirst(currentAlert);
+            currentAlert = null;
+            alertActive = false;
+            showPanel(0);
+        } else if (!pendingAlerts.isEmpty()) {
+            advanceAlert();
+        } else {
+            showPanel(0);
+        }
+    }
+
+    private void activateAlert() {
+        Alert alert = currentAlert;
+        if (alert == null || alert.destination == null || !alert.destination.isActivity()) return;
+        try {
+            if (Build.VERSION.SDK_INT >= 34) {
+                ActivityOptions options = ActivityOptions.makeBasic();
+                options.setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED);
+                alert.destination.send(this, 0, null, null, null, null, options.toBundle());
+            } else {
+                alert.destination.send();
+            }
+            dismissCurrentAlert();
+        } catch (PendingIntent.CanceledException | SecurityException error) {
+            Toast.makeText(this, "Buka pesan dari panel notifikasi Android.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void dismissCurrentAlert() {
+        main.removeCallbacks(expireAlert);
+        advanceAlert();
+    }
+
+    void showAlert(Drawable appIcon, String source, String sender, String message, PendingIntent destination) {
         if (bubble == null) return;
         if (pendingAlerts.size() >= 8) pendingAlerts.removeFirst();
-        pendingAlerts.addLast(new Alert(appIcon, source, sender, message));
-        if (!alertActive) advanceAlert();
+        pendingAlerts.addLast(new Alert(appIcon, source, sender, message, destination));
+        if (!alertActive && !tucked) advanceAlert();
     }
 
     private void advanceAlert() {
+        if (tucked) return;
         if (getSystemService(KeyguardManager.class).isKeyguardLocked()) {
             clearAlert();
             return;
@@ -295,6 +460,9 @@ public final class FloatingPetService extends Service {
             clearAlert();
             return;
         }
+        currentAlert = alert;
+        alertView.setMaxLines(alert.destination == null && "Andi".equals(alert.source) ? 5 : 3);
+        alertPanel.setClickable(alert.destination != null && alert.destination.isActivity());
         if (alert.icon == null) alertIcon.setImageResource(R.drawable.ic_notification);
         else alertIcon.setImageDrawable(alert.icon);
         alertIcon.setContentDescription(alert.source);
@@ -317,6 +485,7 @@ public final class FloatingPetService extends Service {
     void clearAlert() {
         main.removeCallbacks(expireAlert);
         pendingAlerts.clear();
+        currentAlert = null;
         if (bubble == null || !alertActive) return;
         alertActive = false;
         alertView.setText("");
@@ -365,7 +534,7 @@ public final class FloatingPetService extends Service {
 
     private void updateBubble() {
         if (bubble == null) return;
-        boolean visible = alertActive || (hasMusic && !musicHidden);
+        boolean visible = !tucked && (alertActive || (hasMusic && !musicHidden));
         if (!visible) {
             bubble.setVisibility(View.GONE);
             return;
@@ -428,15 +597,20 @@ public final class FloatingPetService extends Service {
                 pendingFlags);
         PendingIntent hide = PendingIntent.getService(this, 1,
                 new Intent(this, FloatingPetService.class).setAction(ACTION_HIDE), pendingFlags);
-        return new Notification.Builder(this, CHANNEL)
+        Notification.Builder builder = new Notification.Builder(this, CHANNEL)
                 .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle("Andi sedang melayang")
-                .setContentText("Geser Andi, atau tahan untuk menyembunyikannya.")
+                .setContentText(focusEnd != 0 ? "Sesi fokus 25 menit sedang berjalan." : "Geser Andi, atau tahan untuk menyembunyikannya.")
                 .setContentIntent(open)
                 .addAction(new Notification.Action.Builder(
                         R.drawable.ic_notification, "Sembunyikan", hide).build())
-                .setOngoing(true)
-                .build();
+                .setOngoing(true);
+        if (focusEnd != 0) {
+            PendingIntent cancel = PendingIntent.getService(this, 2,
+                    new Intent(this, FloatingPetService.class).setAction(ACTION_CANCEL_FOCUS), pendingFlags);
+            builder.addAction(new Notification.Action.Builder(R.drawable.ic_notification, "Akhiri fokus", cancel).build());
+        }
+        return builder.build();
     }
 
     @Override
@@ -497,7 +671,8 @@ public final class FloatingPetService extends Service {
         NotificationPreferences.get(this).unregisterOnSharedPreferenceChangeListener(previewSettingsChanged);
         if (petTouch != null) petTouch.cancelHold();
         unregisterReceiver(screenState);
-        main.removeCallbacks(expireAlert);
+        main.removeCallbacksAndMessages(null);
+        focusEnd = 0;
         if (bubble != null && bubbleAdded) windows.removeViewImmediate(bubble);
         bubble = null;
         if (pet != null) {
@@ -512,6 +687,38 @@ public final class FloatingPetService extends Service {
     @Override
     public IBinder onBind(Intent intent) {
         return null;
+    }
+
+    private final class AlertSwipe implements View.OnTouchListener {
+        private float startX;
+        private Alert touched;
+
+        @Override public boolean onTouch(View view, MotionEvent event) {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    startX = event.getRawX();
+                    touched = currentAlert;
+                    view.animate().cancel();
+                    view.setAlpha(1f);
+                    view.setTranslationX(0);
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    if (touched == currentAlert) view.setTranslationX(event.getRawX() - startX);
+                    return true;
+                case MotionEvent.ACTION_UP:
+                    if (touched != currentAlert) return true;
+                    float distance = event.getRawX() - startX;
+                    view.setTranslationX(0);
+                    if (Math.abs(distance) >= dp(36)) dismissCurrentAlert();
+                    else if (Math.abs(distance) <= dp(12)) view.performClick();
+                    return true;
+                case MotionEvent.ACTION_CANCEL:
+                    if (touched == currentAlert) view.setTranslationX(0);
+                    return true;
+                default:
+                    return true;
+            }
+        }
     }
 
     private final class PetTouch implements View.OnTouchListener {

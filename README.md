@@ -1,4 +1,4 @@
-# Andi Android · trial 0.2.6
+# Andi Android · trial 0.3.0
 
 Push proyek ke repo GitHub dengan GitHub Actions aktif untuk membangun APK di server GitHub. Workflow **Build Andi debug APK** berjalan saat push ke `main` dan dapat dijalankan manual dari tab **Actions**. Setelah build sukses, unduh artefak **Andi-debug**, ekstrak, lalu buka `Andi-debug.apk` di HP.
 
@@ -22,5 +22,7 @@ Trial ini menargetkan Android 8.0 ke atas. Buka APK debug yang sudah dibuat, lal
 5. Geser Andi, putar layar, lalu tahan karakter selama tiga detik untuk menyembunyikan. Beberapa layar sistem dan aplikasi dapat menyembunyikan overlay.
 
 Aktifkan **Mode Tenang** untuk menjeda bubble notifikasi. Buka **Notifikasi per aplikasi** untuk memilih **Sembunyikan**, **Ikon saja**, **Nama pengirim**, atau **Nama dan pesan**. Perubahan membersihkan pratinjau yang masih tampil atau antre.
+
+Ketuk bubble untuk membuka tujuan yang disediakan aplikasi, atau geser bubble ke samping untuk menutupnya. Aktifkan **Menepi otomatis** agar Andi menepi ketika Android melaporkan keyboard atau tampilan layar penuh. Ketika **Mode Tenang** berakhir, Andi menampilkan jumlah notifikasi per aplikasi. **Mulai fokus 25 menit** menepikan Andi hingga sesi selesai atau dihentikan.
 
 Izin akses notifikasi Android terpisah dari izin Andi untuk menampilkan notifikasinya sendiri. Akses notifikasi dan sesi musik diproses di perangkat, tanpa menyimpan isi pesan. Build APK dan perilaku perangkat asli perlu diuji dengan toolchain Android dan HP yang terhubung.

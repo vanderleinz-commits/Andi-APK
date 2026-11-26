@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 final class NotificationPreferences {
+    static final String AUTO_TUCK = "auto_tuck";
     static final String QUIET = "quiet";
     static final String APP_PREFIX = "preview.";
     static final int OFF = 0;
@@ -16,11 +17,6 @@ final class NotificationPreferences {
 
     static SharedPreferences get(Context context) {
         return context.getSharedPreferences("notification_preferences", Context.MODE_PRIVATE);
-    }
-
-    static int previewFor(SharedPreferences preferences, String packageName) {
-        if (preferences.getBoolean(QUIET, false)) return OFF;
-        return appPreview(preferences, packageName);
     }
 
     static int appPreview(SharedPreferences preferences, String packageName) {

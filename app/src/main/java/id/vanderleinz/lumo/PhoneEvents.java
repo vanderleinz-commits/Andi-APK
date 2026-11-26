@@ -128,7 +128,8 @@ public final class PhoneEvents extends NotificationListenerService {
                 || notification.visibility == Notification.VISIBILITY_SECRET
                 || getSystemService(KeyguardManager.class).isKeyguardLocked()) return;
         String packageName = posted.getPackageName();
-        int previewMode = NotificationPreferences.previewFor(NotificationPreferences.get(this), packageName);
+        android.content.SharedPreferences preferences = NotificationPreferences.get(this);
+        int previewMode = NotificationPreferences.appPreview(preferences, packageName);
         if (previewMode == NotificationPreferences.OFF) return;
         String source = packageName;
         Drawable appIcon = null;
@@ -169,7 +170,11 @@ public final class PhoneEvents extends NotificationListenerService {
         long messageTime = message == null ? 0 : message.getTimestamp();
         if (!recentMessages.shouldShow(posted.getKey(), group, summary, author, text,
                 messageTime, android.os.SystemClock.elapsedRealtime())) return;
-        overlay.showAlert(appIcon, source, senderPreview, preview);
+        if (preferences.getBoolean(NotificationPreferences.QUIET, false)) {
+            overlay.countQuietNotification(packageName, source);
+        } else if (!FloatingPetService.isFocusing()) {
+            overlay.showAlert(appIcon, source, senderPreview, preview, notification.contentIntent);
+        }
     }
 
     @Override public void onNotificationRemoved(StatusBarNotification removed) {

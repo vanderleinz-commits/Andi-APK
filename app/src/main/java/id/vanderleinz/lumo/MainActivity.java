@@ -15,6 +15,8 @@ import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.WindowInsets;
@@ -38,6 +40,9 @@ public final class MainActivity extends Activity {
     private static final int COCOA = 0xffe3baa0;
     private Button toggle;
     private TextView status;
+    private Button focus;
+    private final Handler ui = new Handler(Looper.getMainLooper());
+    private final Runnable tickFocus = this::renderFocus;
 
     private final BroadcastReceiver stateReceiver = new BroadcastReceiver() {
         @Override
@@ -119,6 +124,19 @@ public final class MainActivity extends Activity {
         perApp.setOnClickListener(view -> chooseNotificationApp(notificationSettings));
         add(panel, perApp, dp(48), 8);
 
+        Switch autoTuck = new Switch(this);
+        autoTuck.setText("Menepi otomatis");
+        autoTuck.setTextColor(WHITE);
+        autoTuck.setChecked(notificationSettings.getBoolean(NotificationPreferences.AUTO_TUCK, true));
+        autoTuck.setOnCheckedChangeListener((button, checked) -> notificationSettings.edit()
+                .putBoolean(NotificationPreferences.AUTO_TUCK, checked).apply());
+        add(panel, autoTuck, dp(48), 8);
+
+        focus = new Button(this);
+        focus.setAllCaps(false);
+        focus.setOnClickListener(view -> toggleFocus());
+        add(panel, focus, dp(48), 8);
+
         TextView hint = label("Ketuk Andi untuk buka atau tutup musik • Geser untuk pindah\nTahan tiga detik untuk menyembunyikan Andi", 14, MUTED);
         hint.setLineSpacing(dp(3), 1);
         add(panel, hint, -2, 15);
@@ -155,6 +173,7 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onStop() {
+        ui.removeCallbacks(tickFocus);
         unregisterReceiver(stateReceiver);
         super.onStop();
     }
@@ -201,6 +220,32 @@ public final class MainActivity extends Activity {
                 .setNegativeButton("Tutup", null).show();
     }
 
+    private void toggleFocus() {
+        if (!Settings.canDrawOverlays(this)) {
+            toggleOverlay();
+            return;
+        }
+        String action = FloatingPetService.isFocusing()
+                ? FloatingPetService.ACTION_CANCEL_FOCUS : FloatingPetService.ACTION_START_FOCUS;
+        try {
+            startForegroundService(new Intent(this, FloatingPetService.class).setAction(action));
+        } catch (IllegalStateException | SecurityException error) {
+            Toast.makeText(this, "Sesi fokus belum bisa dimulai.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void renderFocus() {
+        ui.removeCallbacks(tickFocus);
+        long remaining = (FloatingPetService.focusRemaining() + 999) / 1000;
+        if (remaining == 0) {
+            focus.setText("Mulai fokus 25 menit");
+        } else {
+            focus.setText(String.format(java.util.Locale.getDefault(), "Akhiri fokus · %d:%02d",
+                    remaining / 60, remaining % 60));
+            ui.postDelayed(tickFocus, 1000);
+        }
+    }
+
     private void toggleOverlay() {
         Intent service = new Intent(this, FloatingPetService.class);
         if (FloatingPetService.isShowing()) {
@@ -234,6 +279,7 @@ public final class MainActivity extends Activity {
     }
 
     private void renderState() {
+        renderFocus();
         boolean showing = FloatingPetService.isShowing();
         boolean allowed = Settings.canDrawOverlays(this);
         status.setText(showing ? "Andi sedang melayang" :
