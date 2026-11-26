@@ -38,13 +38,10 @@ import android.widget.TextView;
 import android.widget.LinearLayout;
 import android.widget.Button;
 import android.widget.ImageView;
-import android.widget.ScrollView;
 import android.util.Log;
 import android.app.KeyguardManager;
 import java.util.ArrayDeque;
 
-import java.util.Collections;
-import java.util.List;
 
 public final class FloatingPetService extends Service {
     static final String ACTION_STATE = "id.vanderleinz.andi.OVERLAY_STATE";
@@ -63,22 +60,25 @@ public final class FloatingPetService extends Service {
     private LinearLayout alertPanel;
     private ImageView alertIcon;
     private TextView musicView;
-    private TextView queueView;
     private LinearLayout musicPanel;
     private DiscView disc;
-    private ScrollView queueScroll;
-    private Button queueToggle;
+    private Button minimizeMusic;
+    private Button reopenMusic;
+    private TextView playlistView;
+    private boolean bubbleOnRight;
     private boolean bubbleAdded;
     private final ArrayDeque<Alert> pendingAlerts = new ArrayDeque<>();
 
     private static final class Alert {
         final Drawable icon;
         final String source;
+        final String sender;
         final String message;
 
-        Alert(Drawable icon, String source, String message) {
+        Alert(Drawable icon, String source, String sender, String message) {
             this.icon = icon;
             this.source = source;
+            this.sender = sender;
             this.message = message;
         }
     }
@@ -87,8 +87,7 @@ public final class FloatingPetService extends Service {
     private Button nextTrack;
     private boolean hasMusic;
     private boolean alertActive;
-    private boolean queueOpen;
-    private List<String> queue = Collections.emptyList();
+    private boolean musicMinimized;
     private WindowManager.LayoutParams bubbleParams;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Runnable expireAlert = this::advanceAlert;
@@ -174,7 +173,7 @@ public final class FloatingPetService extends Service {
     private void createBubble() {
         bubble = new LinearLayout(overlayContext);
         bubble.setOrientation(LinearLayout.VERTICAL);
-        bubble.setPadding(dp(12), dp(3), dp(12), dp(3));
+        bubble.setPadding(dp(8), dp(2), dp(8), dp(2));
         GradientDrawable background = new GradientDrawable();
         background.setCornerRadius(dp(16));
         background.setColor(0xff202c45);
@@ -198,35 +197,38 @@ public final class FloatingPetService extends Service {
         bubble.addView(musicPanel);
         LinearLayout row = new LinearLayout(overlayContext);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(dp(52));
+        row.setMinimumHeight(dp(39));
         musicPanel.addView(row);
         disc = new DiscView(overlayContext);
-        LinearLayout.LayoutParams discParams = new LinearLayout.LayoutParams(dp(49), dp(49));
-        discParams.rightMargin = dp(8);
+        LinearLayout.LayoutParams discParams = new LinearLayout.LayoutParams(dp(34), dp(34));
+        discParams.rightMargin = dp(6);
         row.addView(disc, discParams);
+        LinearLayout musicDetails = new LinearLayout(overlayContext);
+        musicDetails.setOrientation(LinearLayout.VERTICAL);
+        row.addView(musicDetails, new LinearLayout.LayoutParams(0, -2, 1));
         musicView = newBubbleText(2);
-        row.addView(musicView, new LinearLayout.LayoutParams(0, -2, 1));
+        musicView.setTextSize(12);
+        musicView.setPadding(0, 0, 0, 0);
+        musicDetails.addView(musicView);
+        playlistView = newBubbleText(1);
+        playlistView.setTextSize(11);
+        playlistView.setTextColor(0xffd6b7a4);
+        playlistView.setPadding(0, 0, 0, 0);
+        musicDetails.addView(playlistView);
+        minimizeMusic = newMusicButton("−", "Perkecil kartu musik");
+        row.addView(minimizeMusic, new LinearLayout.LayoutParams(dp(38), dp(44)));
+        minimizeMusic.setOnClickListener(view -> setMusicMinimized(true));
         LinearLayout controls = new LinearLayout(overlayContext);
         musicPanel.addView(controls);
         previousTrack = addPlaybackButton(controls, "⏮", "Lagu sebelumnya", PlaybackState.ACTION_SKIP_TO_PREVIOUS);
         playPause = addPlaybackButton(controls, "▶", "Putar",
                 PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_PLAY_PAUSE);
         nextTrack = addPlaybackButton(controls, "⏭", "Lagu berikutnya", PlaybackState.ACTION_SKIP_TO_NEXT);
-        queueToggle = new Button(overlayContext, null, android.R.attr.borderlessButtonStyle);
-        queueToggle.setTextColor(0xffffe5c7);
-        queueToggle.setAllCaps(false);
-        musicPanel.addView(queueToggle);
-        queueScroll = new ScrollView(overlayContext);
-        musicPanel.addView(queueScroll, new LinearLayout.LayoutParams(-1, dp(112)));
-        queueView = newBubbleText(Integer.MAX_VALUE);
-        queueView.setEllipsize(null);
-        queueScroll.addView(queueView);
-        queueToggle.setOnClickListener(view -> {
-            queueOpen = !queueOpen;
-            refreshQueue();
-            updateBubble();
-        });
-        bubbleParams = new WindowManager.LayoutParams(dp(208), WindowManager.LayoutParams.WRAP_CONTENT,
+        reopenMusic = newMusicButton("♫", "Buka kartu musik");
+        reopenMusic.setVisibility(View.GONE);
+        bubble.addView(reopenMusic, new LinearLayout.LayoutParams(-1, dp(42)));
+        reopenMusic.setOnClickListener(view -> setMusicMinimized(false));
+        bubbleParams = new WindowManager.LayoutParams(dp(196), WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
                         | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
@@ -238,18 +240,28 @@ public final class FloatingPetService extends Service {
         return Math.round(value * overlayContext.getResources().getDisplayMetrics().density);
     }
 
-    private Button addPlaybackButton(LinearLayout row, String icon, String label, long action) {
+    private Button newMusicButton(String icon, String label) {
         Button button = new Button(overlayContext, null, android.R.attr.borderlessButtonStyle);
         button.setText(icon);
-        button.setTextSize(19);
+        button.setTextSize(16);
         button.setTextColor(0xffffe5c7);
         button.setContentDescription(label);
         button.setPadding(0, 0, 0, 0);
         button.setMinimumWidth(0);
         button.setMinWidth(0);
-        button.setOnClickListener(view -> PhoneEvents.control(action));
-        row.addView(button, new LinearLayout.LayoutParams(0, dp(48), 1));
         return button;
+    }
+
+    private Button addPlaybackButton(LinearLayout row, String icon, String label, long action) {
+        Button button = newMusicButton(icon, label);
+        button.setOnClickListener(view -> PhoneEvents.control(action));
+        row.addView(button, new LinearLayout.LayoutParams(0, dp(38), 1));
+        return button;
+    }
+
+    private void setMusicMinimized(boolean minimized) {
+        musicMinimized = minimized;
+        showPanel(0);
     }
 
     private void setPlaybackEnabled(Button button, boolean enabled) {
@@ -267,10 +279,10 @@ public final class FloatingPetService extends Service {
         return view;
     }
 
-    void showAlert(Drawable appIcon, String source, String message) {
+    void showAlert(Drawable appIcon, String source, String sender, String message) {
         if (bubble == null) return;
         if (pendingAlerts.size() >= 8) pendingAlerts.removeFirst();
-        pendingAlerts.addLast(new Alert(appIcon, source, message));
+        pendingAlerts.addLast(new Alert(appIcon, source, sender, message));
         if (!alertActive) advanceAlert();
     }
 
@@ -287,8 +299,16 @@ public final class FloatingPetService extends Service {
         if (alert.icon == null) alertIcon.setImageResource(android.R.drawable.ic_dialog_info);
         else alertIcon.setImageDrawable(alert.icon);
         alertIcon.setContentDescription(alert.source);
-        alertView.setText(alert.message);
-        alertView.setVisibility(alert.message.isEmpty() ? View.GONE : View.VISIBLE);
+        android.text.SpannableStringBuilder preview = new android.text.SpannableStringBuilder();
+        if (!alert.sender.isEmpty()) {
+            preview.append(alert.sender);
+            preview.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
+                    0, preview.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            if (!alert.message.isEmpty()) preview.append("\n");
+        }
+        preview.append(alert.message);
+        alertView.setText(preview);
+        alertView.setVisibility(preview.length() == 0 ? View.GONE : View.VISIBLE);
         alertActive = true;
         pet.react();
         showPanel(1);
@@ -305,13 +325,9 @@ public final class FloatingPetService extends Service {
         showPanel(-1);
     }
 
-    void showMusic(CharSequence title, CharSequence artist, Bitmap art, List<String> tracks,
+    void showMusic(CharSequence title, CharSequence artist, Bitmap art, CharSequence playlist,
                    boolean playing, long actions) {
         if (bubble == null) return;
-        if (!queue.equals(tracks)) {
-            queue = tracks;
-            queueScroll.scrollTo(0, 0);
-        }
         hasMusic = title != null;
         disc.setArtwork(art);
         disc.setPlaying(playing);
@@ -321,33 +337,32 @@ public final class FloatingPetService extends Service {
         setPlaybackEnabled(previousTrack, (actions & PlaybackState.ACTION_SKIP_TO_PREVIOUS) != 0);
         setPlaybackEnabled(playPause, (actions & (toggle | PlaybackState.ACTION_PLAY_PAUSE)) != 0);
         setPlaybackEnabled(nextTrack, (actions & PlaybackState.ACTION_SKIP_TO_NEXT) != 0);
-        if (title == null) queueOpen = false;
-        else musicView.setText(title + (artist == null || artist.length() == 0 ? "" : "\n" + artist));
-        refreshQueue();
+        if (title != null) {
+            musicView.setText(title + (artist == null || artist.length() == 0 ? "" : "\n" + artist));
+            playlistView.setText(playlist);
+            playlistView.setVisibility(playlist == null || playlist.length() == 0 ? View.GONE : View.VISIBLE);
+        }
         showPanel(0);
     }
 
     private void showPanel(int direction) {
+        boolean showMusic = !alertActive && hasMusic;
         alertPanel.setVisibility(alertActive ? View.VISIBLE : View.GONE);
-        musicPanel.setVisibility(!alertActive && hasMusic ? View.VISIBLE : View.GONE);
+        musicPanel.setVisibility(showMusic && !musicMinimized ? View.VISIBLE : View.GONE);
+        reopenMusic.setVisibility(showMusic && musicMinimized ? View.VISIBLE : View.GONE);
         updateBubble();
-        View active = alertActive ? alertPanel : hasMusic ? musicPanel : null;
-        if (direction != 0) {
-            alertPanel.animate().cancel();
-            musicPanel.animate().cancel();
-            if (active != null) {
-                active.setTranslationX(dp(22) * direction);
-                active.setAlpha(0.4f);
-                active.animate().translationX(0).alpha(1f).setDuration(220).start();
-            }
+        if (direction == 0) return;
+        View active = alertActive ? alertPanel : showMusic ? (musicMinimized ? reopenMusic : musicPanel) : null;
+        for (View panel : new View[]{alertPanel, musicPanel, reopenMusic}) {
+            panel.animate().cancel();
+            panel.setTranslationX(0);
+            panel.setAlpha(1);
         }
-    }
-
-    private void refreshQueue() {
-        String text = queue.isEmpty() ? "Aplikasi musik tidak menyediakan antrean." : String.join("\n", queue);
-        if (!android.text.TextUtils.equals(queueView.getText(), text)) queueView.setText(text);
-        queueToggle.setText(queueOpen ? "Tutup antrean" : "Lihat antrean");
-        queueScroll.setVisibility(queueOpen ? View.VISIBLE : View.GONE);
+        if (active != null) {
+            active.setTranslationX(dp(16) * direction * (bubbleOnRight ? 1 : -1));
+            active.setAlpha(0.4f);
+            active.animate().translationX(0).alpha(1f).setDuration(220).start();
+        }
     }
 
     private void updateBubble() {
@@ -360,14 +375,34 @@ public final class FloatingPetService extends Service {
         Point bounds = movementBounds();
         int width = bounds.x + params.width;
         int height = bounds.y + params.height;
-        int requestedWidth = alertActive && alertView.getVisibility() == View.GONE ? 52 : 208;
-        bubbleParams.width = Math.min(dp(requestedWidth), width);
+        int edge = dp(4);
+        int gap = dp(2);
+        int left = params.x - gap;
+        int right = params.x + params.width + gap;
+        int spaceLeft = left - edge;
+        int spaceRight = width - right - edge;
+        bubbleOnRight = spaceRight >= spaceLeft;
+        int available = Math.max(spaceLeft, spaceRight);
+        boolean compact = alertActive ? alertView.getVisibility() == View.GONE : musicMinimized;
+        int preferredWidth = dp(compact ? 46 : 196);
+        boolean beside = available >= dp(compact ? 40 : 112);
+        if (!alertActive && !musicMinimized) {
+            // Keep controls usable in the smallest supported side layout.
+            disc.setVisibility(beside && available < dp(148) ? View.GONE : View.VISIBLE);
+        }
+        bubbleParams.width = Math.min(preferredWidth, beside ? available : Math.max(1, width - 2 * edge));
         bubble.measure(View.MeasureSpec.makeMeasureSpec(bubbleParams.width, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.AT_MOST));
         int bubbleHeight = bubble.getMeasuredHeight();
-        bubbleParams.x = clamp(params.x + (params.width - bubbleParams.width) / 2, width - bubbleParams.width);
-        int above = params.y + dp(18) - bubbleHeight;
-        bubbleParams.y = clamp(above >= 0 ? above : params.y + params.height - dp(17), height - bubbleHeight);
+        int centeredY = params.y + (params.height - bubbleHeight) / 2;
+        if (beside) {
+            bubbleParams.x = bubbleOnRight ? right : left - bubbleParams.width;
+            bubbleParams.y = clamp(centeredY, height - bubbleHeight);
+        } else {
+            bubbleParams.x = clamp(params.x + (params.width - bubbleParams.width) / 2, width - bubbleParams.width);
+            int above = params.y - bubbleHeight - gap;
+            bubbleParams.y = clamp(above >= edge ? above : params.y + params.height + gap, height - bubbleHeight);
+        }
         try {
             if (bubbleAdded) windows.updateViewLayout(bubble, bubbleParams);
             else {
