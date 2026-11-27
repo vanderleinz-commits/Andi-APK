@@ -526,8 +526,8 @@ public final class FloatingPetService extends Service {
             return;
         }
         if (!QuickActionsService.isConnected()) {
-            Toast.makeText(this, "Aktifkan Andi · Tombol cepat di Aksesibilitas.", Toast.LENGTH_LONG).show();
-            launch(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+            launch(new Intent(this, MainActivity.class).setAction(MainActivity.ACTION_PERMISSIONS)
+                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP));
             return;
         }
         if (action == android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT) {

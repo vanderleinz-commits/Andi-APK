@@ -3,6 +3,8 @@ package id.vanderleinz.lumo;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.NotificationManager;
+import android.content.ComponentName;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -20,6 +22,7 @@ import android.os.Looper;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.WindowInsets;
+import android.view.accessibility.AccessibilityManager;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -36,6 +39,9 @@ import java.util.Map;
 public final class MainActivity extends Activity {
     static final String ACTION_LYRICS = "id.vanderleinz.andi.LYRICS";
     static final String ACTION_CALENDAR = "id.vanderleinz.andi.CALENDAR";
+    static final String ACTION_PERMISSIONS = "id.vanderleinz.andi.PERMISSIONS";
+    private static final int REQUEST_ANDI_NOTIFICATIONS = 1;
+    private static final String ASKED_FOR_NOTIFICATIONS = "asked_for_notifications";
     private static final int NAVY = 0xff10192b;
     private static final int WHITE = 0xffedf3ff;
     private static final int MUTED = 0xffb5c2df;
@@ -43,8 +49,13 @@ public final class MainActivity extends Activity {
     private Button toggle;
     private TextView status;
     private Button focus;
-    private Button quickAccess;
-    private Button phoneAccess;
+    private AlertDialog permissionDialog;
+    private Button overlayPermission;
+    private Button listenerPermission;
+    private Button andiNotifications;
+    private Button exactAlarms;
+    private Button accessibilityPermission;
+    private Button lyricsPermission;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final Runnable tickFocus = this::renderFocus;
 
@@ -99,12 +110,11 @@ public final class MainActivity extends Activity {
         toggle.setOnClickListener(view -> toggleOverlay());
         add(panel, toggle, dp(54), 14);
 
-        phoneAccess = new Button(this);
-        phoneAccess.setAllCaps(false);
-        phoneAccess.setText("Akses notifikasi dan musik");
-        phoneAccess.setOnClickListener(view -> explainAccess(false));
-        add(panel, phoneAccess, dp(54), 8);
-        add(panel, label("Opsional. Bubble bisa menampilkan pratinjau pesan saat HP terbuka.", 13, MUTED), -2, 6);
+        Button permissions = new Button(this);
+        permissions.setAllCaps(false);
+        permissions.setText("Izin & panduan instalasi");
+        permissions.setOnClickListener(view -> showPermissions());
+        add(panel, permissions, dp(54), 8);
 
         SharedPreferences notificationSettings = NotificationPreferences.get(this);
         Switch quiet = new Switch(this);
@@ -147,12 +157,6 @@ public final class MainActivity extends Activity {
         shortcuts.setOnClickListener(view -> chooseShortcuts(notificationSettings));
         add(panel, shortcuts, dp(48), 8);
 
-        quickAccess = new Button(this);
-        quickAccess.setAllCaps(false);
-        quickAccess.setText("Akses daya, kunci, dan screenshot");
-        quickAccess.setOnClickListener(view -> explainAccess(true));
-        add(panel, quickAccess, dp(48), 8);
-
         TextView hint = label("Ketuk untuk menu cepat • Ketuk dua kali untuk musik\nTahan tiga detik untuk menyembunyikan Andi", 14, MUTED);
         hint.setLineSpacing(dp(3), 1);
         add(panel, hint, -2, 15);
@@ -168,6 +172,13 @@ public final class MainActivity extends Activity {
             });
             scroll.requestApplyInsets();
         }
+        if (state != null && state.getBoolean("permissions_open")) showPermissions();
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle state) {
+        super.onSaveInstanceState(state);
+        state.putBoolean("permissions_open", permissionDialog != null && permissionDialog.isShowing());
     }
 
     @Override
@@ -197,18 +208,28 @@ public final class MainActivity extends Activity {
 
     private void openRequestedPanel() {
         String action = getIntent().getAction();
-        if (ACTION_CALENDAR.equals(action)) {
+        if (ACTION_PERMISSIONS.equals(action)) {
+            getIntent().setAction(null);
+            showPermissions();
+        } else if (ACTION_CALENDAR.equals(action)) {
             getIntent().setAction(null);
             showCalendar();
         } else if (ACTION_LYRICS.equals(action)) {
             getIntent().setAction(null);
-            new AlertDialog.Builder(this).setTitle("Tampilkan lirik")
-                    .setMessage("Untuk mencari lirik, Andi mengirim judul dan nama artis lagu aktif ke LRCLIB selama panel lirik ditampilkan.")
-                    .setNegativeButton("Nanti", null)
-                    .setPositiveButton("Tampilkan", (dialog, which) ->
-                            NotificationPreferences.get(this).edit().putBoolean(NotificationPreferences.LYRICS_CONSENT, true).apply())
-                    .show();
+            showLyricsConsent();
         }
+    }
+
+    private void showLyricsConsent() {
+        SharedPreferences preferences = NotificationPreferences.get(this);
+        boolean allowed = preferences.getBoolean(NotificationPreferences.LYRICS_CONSENT, false);
+        new AlertDialog.Builder(this).setTitle("Akses pencarian lirik")
+                .setMessage("Untuk mencari lirik, Andi mengirim judul dan nama artis lagu aktif ke LRCLIB selama panel lirik ditampilkan.")
+                .setNegativeButton("Kembali", null)
+                .setPositiveButton(allowed ? "Nonaktifkan" : "Izinkan", (dialog, which) -> {
+                    preferences.edit().putBoolean(NotificationPreferences.LYRICS_CONSENT, !allowed).apply();
+                    renderPermissionStatus();
+                }).show();
     }
 
     private void showCalendar() {
@@ -235,14 +256,7 @@ public final class MainActivity extends Activity {
                     }
                 }).setNegativeButton("Tutup", null);
         if (!ReminderReceiver.canScheduleExact(this) && Build.VERSION.SDK_INT >= 31) {
-            dialog.setNeutralButton("Izinkan alarm tepat waktu", (window, which) -> {
-                try {
-                    startActivity(new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
-                            Uri.parse("package:" + getPackageName())));
-                } catch (android.content.ActivityNotFoundException error) {
-                    Toast.makeText(this, "Buka Alarms & reminders di Setelan Android.", Toast.LENGTH_LONG).show();
-                }
-            });
+            dialog.setNeutralButton("Izin pengingat", (window, which) -> showPermissions());
         }
         dialog.show();
     }
@@ -294,7 +308,7 @@ public final class MainActivity extends Activity {
             dialog.dismiss();
             if (Build.VERSION.SDK_INT >= 33
                     && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 2);
+                requestAndiNotifications();
             }
         }));
         dialog.show();
@@ -305,6 +319,12 @@ public final class MainActivity extends Activity {
         ui.removeCallbacks(tickFocus);
         unregisterReceiver(stateReceiver);
         super.onStop();
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (permissionDialog != null) permissionDialog.dismiss();
+        super.onDestroy();
     }
 
     private void chooseShortcuts(SharedPreferences settings) {
@@ -322,31 +342,153 @@ public final class MainActivity extends Activity {
                 }).show();
     }
 
-    private void explainAccess(boolean systemActions) {
-        String action = systemActions ? Settings.ACTION_ACCESSIBILITY_SETTINGS :
-                Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS;
-        String permission = systemActions ? "Aksi sistem" : "Akses notifikasi dan musik";
-        String explanation = systemActions
-                ? "Aktifkan Andi · Tombol cepat agar tombol Daya, Kunci, dan Screenshot bisa menjalankan aksi sistem."
-                : "Pilih Andi di setelan Akses notifikasi agar kartu notifikasi dan musik dapat ditampilkan.";
-        AlertDialog.Builder guide = new AlertDialog.Builder(this).setTitle(permission)
-                .setMessage(explanation + (Build.VERSION.SDK_INT >= 33
-                        ? "\n\nJika Android menampilkan Restricted setting, buka Info aplikasi Andi, ketuk menu ⋮, lalu pilih Allow restricted settings. Setelah itu kembali ke pengaturan ini."
-                        : ""))
-                .setNegativeButton("Nanti", null)
-                .setPositiveButton("Buka setelan", (dialog, which) -> openSetting(new Intent(action)));
-        if (Build.VERSION.SDK_INT >= 33) {
-            guide.setNeutralButton("Info aplikasi", (dialog, which) -> openSetting(
-                    new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))));
+    private void showPermissions() {
+        if (permissionDialog != null && permissionDialog.isShowing()) return;
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout rows = new LinearLayout(this);
+        rows.setOrientation(LinearLayout.VERTICAL);
+        rows.setPadding(dp(20), dp(6), dp(20), dp(14));
+        scroll.addView(rows);
+
+        overlayPermission = permissionRow(rows, "Diperlukan agar Andi bisa melayang di atas aplikasi lain.",
+                () -> openSetting(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, appUri())));
+        listenerPermission = permissionRow(rows, "Pilih Andi untuk menampilkan notifikasi masuk dan mengontrol musik.",
+                this::openNotificationAccess);
+        andiNotifications = permissionRow(rows, "Izinkan Andi mengirim notifikasi pengingat dan statusnya.",
+                this::requestAndiNotifications);
+        if (Build.VERSION.SDK_INT >= 31) {
+            exactAlarms = permissionRow(rows, "Aktifkan agar pengingat kalender bisa berbunyi tepat waktu.",
+                    () -> openSetting(new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, appUri())));
         }
-        guide.show();
+        accessibilityPermission = permissionRow(rows,
+                "Pilih Andi · Tombol cepat untuk aksi Daya, Kunci, dan Screenshot. Kunci dan Screenshot perlu Android 9.",
+                () -> openSetting(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
+        if (Build.VERSION.SDK_INT >= 33) {
+            Button appInfo = permissionRow(rows,
+                    "Jika akses dibatasi, buka Info aplikasi, ketuk ⋮, pilih Izinkan setelan terbatas, lalu kembali untuk mengaktifkan aksesnya.",
+                    () -> openSetting(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, appUri())));
+            appInfo.setText("Buka info aplikasi Andi");
+        }
+        lyricsPermission = permissionRow(rows, "Pilih apakah Andi boleh mencari lirik lagu lewat LRCLIB.",
+                this::showLyricsConsent);
+        Button install = permissionRow(rows, "Lihat langkah memasang atau memperbarui APK trial.",
+                this::showInstallGuide);
+        install.setText("Panduan pemasangan APK");
+
+        permissionDialog = new AlertDialog.Builder(this).setTitle("Izin & panduan instalasi")
+                .setView(scroll).setPositiveButton("Selesai", null).create();
+        permissionDialog.setOnDismissListener(ignored -> permissionDialog = null);
+        permissionDialog.show();
+        renderPermissionStatus();
+    }
+
+    private Button permissionRow(LinearLayout rows, String description, Runnable action) {
+        Button button = new Button(this);
+        button.setAllCaps(false);
+        button.setMinHeight(dp(44));
+        button.setOnClickListener(view -> action.run());
+        add(rows, button, -2, 8);
+
+        TextView explanation = new TextView(this);
+        explanation.setText(description);
+        explanation.setTextSize(13);
+        explanation.setPadding(dp(6), 0, dp(6), dp(4));
+        add(rows, explanation, -2, 1);
+        return button;
+    }
+
+    private void renderPermissionStatus() {
+        if (permissionDialog == null) return;
+        NotificationManager notifications = getSystemService(NotificationManager.class);
+        boolean listening = Build.VERSION.SDK_INT >= 27
+                ? notifications.isNotificationListenerAccessGranted(new ComponentName(this, PhoneEvents.class))
+                : PhoneEvents.isConnected();
+        setPermissionStatus(overlayPermission, "Tampil di atas aplikasi", Settings.canDrawOverlays(this));
+        setPermissionStatus(listenerPermission, "Akses notifikasi dan musik", listening);
+        setPermissionStatus(andiNotifications, "Notifikasi dari Andi", notifications.areNotificationsEnabled());
+        if (exactAlarms != null) {
+            setPermissionStatus(exactAlarms, "Alarm & pengingat", ReminderReceiver.canScheduleExact(this));
+        }
+        boolean quickActionsEnabled = getSystemService(AccessibilityManager.class)
+                .getEnabledAccessibilityServiceList(android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+                .stream().anyMatch(service -> {
+                    android.content.pm.ServiceInfo info = service.getResolveInfo().serviceInfo;
+                    return getPackageName().equals(info.packageName) && QuickActionsService.class.getName().equals(info.name);
+                });
+        setPermissionStatus(accessibilityPermission, "Aksesibilitas tombol cepat", quickActionsEnabled);
+        setPermissionStatus(lyricsPermission, "Pencarian lirik",
+                NotificationPreferences.get(this).getBoolean(NotificationPreferences.LYRICS_CONSENT, false));
+    }
+
+    private void setPermissionStatus(Button button, String title, boolean enabled) {
+        button.setText(title + (enabled ? " · Aktif" : " · Belum aktif"));
+    }
+
+    private void openNotificationAccess() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            Intent details = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
+                    .putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
+                            new ComponentName(this, PhoneEvents.class).flattenToString());
+            try {
+                startActivity(details);
+                return;
+            } catch (android.content.ActivityNotFoundException | SecurityException ignored) {
+                // Some devices expose only the list of notification listeners.
+            }
+        }
+        openSetting(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
+    }
+
+    private void requestAndiNotifications() {
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            SharedPreferences preferences = getPreferences(MODE_PRIVATE);
+            if (!preferences.getBoolean(ASKED_FOR_NOTIFICATIONS, false)
+                    || shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) {
+                preferences.edit().putBoolean(ASKED_FOR_NOTIFICATIONS, true).apply();
+                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_ANDI_NOTIFICATIONS);
+                return;
+            }
+        }
+        openSetting(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName()));
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_ANDI_NOTIFICATIONS) renderPermissionStatus();
+    }
+
+    private void showInstallGuide() {
+        new AlertDialog.Builder(this).setTitle("Pasang atau perbarui Andi")
+                .setMessage("1. Masuk ke GitHub dengan akun yang punya akses ke Andi-APK.\n"
+                        + "2. Buka build yang berhasil, unduh Andi-debug, lalu ekstrak ZIP.\n"
+                        + "3. Buka Andi-debug.apk dan konfirmasi pemasangan di Android. "
+                        + "Jika diminta, izinkan pemasangan dari aplikasi yang membuka APK.\n"
+                        + "4. Setelah terpasang, buka Andi dan kembali ke Izin & panduan instalasi.\n\n"
+                        + "Jika tanda tangan APK berbeda, Android bisa menolak pembaruan. "
+                        + "Catat pengingat sebelum menghapus versi lama karena data lokal ikut terhapus.")
+                .setNegativeButton("Kembali", null)
+                .setPositiveButton("Buka unduhan GitHub", (dialog, which) -> openSetting(new Intent(
+                        Intent.ACTION_VIEW, Uri.parse("https://github.com/vanderleinz-commits/Andi-APK/actions")),
+                        "Buka halaman Actions Andi-APK di browser."))
+                .show();
+    }
+
+    private Uri appUri() {
+        return Uri.fromParts("package", getPackageName(), null);
     }
 
     private void openSetting(Intent intent) {
+        openSetting(intent, "Buka Setelan Android untuk mengatur izin ini.");
+    }
+
+    private void openSetting(Intent intent, String fallback) {
         try {
             startActivity(intent);
-        } catch (android.content.ActivityNotFoundException error) {
-            Toast.makeText(this, "Pengaturan ini bisa dibuka dari Setelan Android.", Toast.LENGTH_SHORT).show();
+        } catch (android.content.ActivityNotFoundException | SecurityException error) {
+            Toast.makeText(this, fallback, Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -425,26 +567,11 @@ public final class MainActivity extends Activity {
             return;
         }
         if (!Settings.canDrawOverlays(this)) {
-            try {
-                startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        Uri.fromParts("package", getPackageName(), null)));
-            } catch (android.content.ActivityNotFoundException exception) {
-                Toast.makeText(this, "Buka Setelan lalu cari izin tampil di atas aplikasi lain.",
-                        Toast.LENGTH_LONG).show();
-            }
+            showPermissions();
             return;
         }
         try {
             startForegroundService(service);
-            if (Build.VERSION.SDK_INT >= 33
-                    && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
-                    != PackageManager.PERMISSION_GRANTED) {
-                android.content.SharedPreferences preferences = getPreferences(MODE_PRIVATE);
-                if (!preferences.getBoolean("asked_for_notifications", false)) {
-                    preferences.edit().putBoolean("asked_for_notifications", true).apply();
-                    requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
-                }
-            }
         } catch (IllegalStateException | SecurityException exception) {
             Toast.makeText(this, "Andi belum bisa ditampilkan. Coba lagi.", Toast.LENGTH_SHORT).show();
         }
@@ -452,12 +579,7 @@ public final class MainActivity extends Activity {
 
     private void renderState() {
         renderFocus();
-        quickAccess.setText(QuickActionsService.isConnected() ? "Aksi sistem aktif" : "Akses daya, kunci, dan screenshot");
-        android.app.NotificationManager notifications = getSystemService(android.app.NotificationManager.class);
-        boolean access = Build.VERSION.SDK_INT >= 27
-                ? notifications.isNotificationListenerAccessGranted(new android.content.ComponentName(this, PhoneEvents.class))
-                : PhoneEvents.isConnected();
-        phoneAccess.setText(access ? "Akses notifikasi dan musik aktif" : "Akses notifikasi dan musik");
+        renderPermissionStatus();
         boolean showing = FloatingPetService.isShowing();
         boolean allowed = Settings.canDrawOverlays(this);
         status.setText(showing ? "Andi sedang melayang" :

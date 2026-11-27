@@ -15,7 +15,7 @@ final class NotificationPreferences {
     static final int ICON = 1;
     static final int SENDER = 2;
     static final int MESSAGE = 3;
-    static final String[] LABELS = {"Sembunyikan", "Ikon saja", "Nama pengirim", "Nama dan pesan"};
+    static final String[] LABELS = {"Sembunyikan", "Ikon saja", "Nama pengirim (percakapan)", "Pratinjau lengkap"};
 
     private NotificationPreferences() { }
 

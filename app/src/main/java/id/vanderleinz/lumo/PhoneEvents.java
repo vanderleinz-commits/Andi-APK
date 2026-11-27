@@ -21,15 +21,24 @@ import android.view.KeyEvent;
 import android.os.Looper;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
+import android.text.TextUtils;
 
 import android.support.v4.media.session.MediaControllerCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public final class PhoneEvents extends NotificationListenerService {
+    private static final List<String> KNOWN_SOCIAL_APPS = Arrays.asList(
+            "com.whatsapp", "com.whatsapp.w4b", "com.instagram.android",
+            "com.facebook.katana", "com.facebook.orca", "com.facebook.mlite",
+            "org.telegram.messenger", "org.telegram.messenger.web", "org.thunderdog.challegram",
+            "com.discord", "jp.naver.line.android", "com.snapchat.android", "com.twitter.android",
+            "com.zhiliaoapp.musically", "com.ss.android.ugc.trill",
+            "com.tencent.mm", "org.thoughtcrime.securesms");
     private static PhoneEvents connected;
     private static FloatingPetService overlay;
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -136,20 +145,24 @@ public final class PhoneEvents extends NotificationListenerService {
     }
 
     @Override public void onNotificationPosted(StatusBarNotification posted) {
-        if (overlay == null || posted.getPackageName().equals(getPackageName())) return;
+        String packageName = posted.getPackageName();
+        if (overlay == null || packageName.equals(getPackageName())) return;
         Notification notification = posted.getNotification();
         if (Notification.CATEGORY_TRANSPORT.equals(notification.category)
+                || Notification.CATEGORY_SYSTEM.equals(notification.category)
+                || posted.isOngoing() || "android".equals(packageName) || "com.android.systemui".equals(packageName)
                 || notification.visibility == Notification.VISIBILITY_SECRET
                 || getSystemService(KeyguardManager.class).isKeyguardLocked()) return;
-        String packageName = posted.getPackageName();
         android.content.SharedPreferences preferences = NotificationPreferences.get(this);
         int previewMode = NotificationPreferences.appPreview(preferences, packageName);
         if (previewMode == NotificationPreferences.OFF) return;
         String source = packageName;
+        boolean socialApp = KNOWN_SOCIAL_APPS.contains(packageName);
         Drawable appIcon = null;
         PackageManager packages = getPackageManager();
         try {
             ApplicationInfo app = packages.getApplicationInfo(packageName, 0);
+            socialApp |= app.category == ApplicationInfo.CATEGORY_SOCIAL;
             source = packages.getApplicationLabel(app).toString();
             Intent launcher = packages.getLaunchIntentForPackage(packageName);
             if (launcher == null) {
@@ -162,26 +175,39 @@ public final class PhoneEvents extends NotificationListenerService {
         } catch (PackageManager.NameNotFoundException | RuntimeException error) {
             Log.d("AndiNotifications", "App icon unavailable for " + packageName, error);
         }
+        boolean summary = (notification.flags & Notification.FLAG_GROUP_SUMMARY) != 0;
         CharSequence body = "";
+        CharSequence title = null;
         CharSequence sender = null;
+        boolean conversation = false;
         Notification.MessagingStyle.Message message = null;
         try {
-            message = latestMessage(notification.extras);
-            body = message == null ? notificationBody(notification) : message.getText();
-            sender = senderName(notification, message, body);
+            Bundle extras = notification.extras;
+            if (extras != null) title = extras.getCharSequence(Notification.EXTRA_TITLE);
+            body = notificationBody(notification);
+            if (socialApp && !summary) {
+                message = latestMessage(extras);
+                conversation = message != null || hasConversationDetails(notification, extras);
+                if (conversation) {
+                    if (message != null) body = message.getText();
+                    sender = senderName(title, message, body);
+                }
+            }
         } catch (RuntimeException error) {
             Log.w("AndiNotifications", "Could not decode notification details", error);
         }
-        if (((notification.flags & Notification.FLAG_GROUP_SUMMARY) != 0 || posted.isOngoing())
-                && body.length() == 0) return;
-        String preview = previewMode == NotificationPreferences.MESSAGE ? boundedPreview(body, 180) : "";
+        if (summary && body.length() == 0) return;
+        CharSequence previewText = body;
+        if (!summary && !conversation && !TextUtils.isEmpty(title) && !TextUtils.equals(title, body)) {
+            previewText = body.length() == 0 ? title : title + "\n" + body;
+        }
+        String preview = previewMode == NotificationPreferences.MESSAGE ? boundedPreview(previewText, 180) : "";
         String senderPreview = previewMode >= NotificationPreferences.SENDER && sender != null
                 ? boundedPreview(sender, 70) : "";
-        boolean summary = (notification.flags & Notification.FLAG_GROUP_SUMMARY) != 0;
         String group = posted.isGroup() ? posted.getGroupKey() : null;
         String text = body.toString();
         String author = sender == null ? "" : sender.toString();
-        long messageTime = message == null ? 0 : message.getTimestamp();
+        long messageTime = message != null && conversation ? message.getTimestamp() : 0;
         if (!recentMessages.shouldShow(posted.getKey(), group, summary, author, text,
                 messageTime, android.os.SystemClock.elapsedRealtime())) return;
         if (preferences.getBoolean(NotificationPreferences.QUIET, false)) {
@@ -195,6 +221,13 @@ public final class PhoneEvents extends NotificationListenerService {
         recentMessages.remove(removed.getKey());
     }
 
+    private boolean hasConversationDetails(Notification notification, Bundle extras) {
+        if (Notification.CATEGORY_MESSAGE.equals(notification.category)) return true;
+        return extras != null && (Notification.MessagingStyle.class.getName()
+                .equals(extras.getString(Notification.EXTRA_TEMPLATE))
+                || !TextUtils.isEmpty(extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)));
+    }
+
     private Notification.MessagingStyle.Message latestMessage(Bundle extras) {
         if (android.os.Build.VERSION.SDK_INT < 30 || extras == null) return null;
         android.os.Parcelable[] parcels = extras.getParcelableArray(Notification.EXTRA_MESSAGES);
@@ -203,25 +236,18 @@ public final class PhoneEvents extends NotificationListenerService {
                 Notification.MessagingStyle.Message.getMessagesFromBundleArray(parcels);
         for (int index = messages.size() - 1; index >= 0; index--) {
             Notification.MessagingStyle.Message message = messages.get(index);
-            if (!android.text.TextUtils.isEmpty(message.getText())) return message;
+            if (!TextUtils.isEmpty(message.getText())) return message;
         }
         return null;
     }
 
-    private CharSequence senderName(Notification notification, Notification.MessagingStyle.Message message,
+    private CharSequence senderName(CharSequence title, Notification.MessagingStyle.Message message,
                                     CharSequence body) {
         if (android.os.Build.VERSION.SDK_INT >= 30 && message != null) {
             android.app.Person sender = message.getSenderPerson();
-            if (sender != null && !android.text.TextUtils.isEmpty(sender.getName())) return sender.getName();
+            if (sender != null && !TextUtils.isEmpty(sender.getName())) return sender.getName();
         }
-        Bundle extras = notification.extras;
-        if (extras == null || (notification.flags & Notification.FLAG_GROUP_SUMMARY) != 0) return null;
-        boolean conversation = message != null || Notification.CATEGORY_MESSAGE.equals(notification.category)
-                || extras.containsKey(Notification.EXTRA_MESSAGES)
-                || extras.containsKey(Notification.EXTRA_CONVERSATION_TITLE);
-        if (!conversation) return null;
-        CharSequence title = extras.getCharSequence(Notification.EXTRA_TITLE);
-        return android.text.TextUtils.equals(title, body) ? null : title;
+        return TextUtils.equals(title, body) ? null : title;
     }
 
     private CharSequence notificationBody(Notification notification) {

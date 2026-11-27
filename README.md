@@ -1,8 +1,8 @@
-# Andi Android · trial 0.4.1
+# Andi Android · trial 0.4.2
 
 Push proyek ke repo GitHub dengan GitHub Actions aktif untuk membangun APK di server GitHub. Workflow **Build Andi debug APK** berjalan saat push ke `main` dan dapat dijalankan manual dari tab **Actions**. Setelah build sukses, unduh artefak **Andi-debug**, ekstrak, lalu buka `Andi-debug.apk` di HP.
 
-Andi adalah robot pari berwarna dark blue dan cocoa brown. Ketuk untuk membuka atau menyembunyikan kartu musik, geser untuk memindahkan Andi, atau tahan tiga detik untuk menyembunyikan Andi. Setelah didiamkan, Andi tidur. Bubble mengikuti posisi Andi saat melayang.
+Andi adalah robot pari berwarna dark blue dan cocoa brown. Ketuk untuk menu cepat, ketuk dua kali untuk kartu musik, geser untuk memindahkan Andi, atau tahan tiga detik untuk menyembunyikan Andi. Setelah didiamkan, Andi tidur. Bubble mengikuti posisi Andi saat melayang.
 
 ## Build APK debug
 
@@ -15,13 +15,13 @@ Andi adalah robot pari berwarna dark blue dan cocoa brown. Ketuk untuk membuka a
 
 Trial ini menargetkan Android 8.0 ke atas. Buka APK debug yang sudah dibuat, lalu ikuti langkah berikut.
 
-1. Pilih **Buka pengaturan izin**, aktifkan **Tampilkan di atas aplikasi lain** untuk Andi, kembali ke app, lalu pilih **Tampilkan Andi**.
-2. Pilih **Akses notifikasi dan musik** dan aktifkan Andi di pengaturan Android jika ingin mencoba bubble notifikasi dan musik.
-3. Dengan layar terbuka, kirim pesan tes ke HP. Bubble menampilkan ikon aplikasi atau ikon notifikasi Andi jika ikon aplikasi tidak tersedia, nama pengirim jika tersedia, dan isi pesan selama 3,5 detik, lalu kembali ke kartu musik jika tersedia.
-4. Putar lagu dari aplikasi musik untuk melihat CD berputar. Foto album muncul jika pemutar menyediakannya. Judul lagu dan nama artis tampil jika pemutar menyediakannya. Ketuk Andi sekali untuk menyembunyikan kartu musik, dan sekali lagi untuk membukanya. Geser Andi untuk melihat kartu pindah sisi. Coba juga tombol jeda, lanjut, sebelumnya, dan berikutnya.
+1. Buka **Izin & panduan instalasi**, pilih **Tampil di atas aplikasi**, aktifkan izin untuk Andi, lalu kembali dan pilih **Tampilkan Andi**.
+2. Dari halaman yang sama, aktifkan **Akses notifikasi dan musik**. Status izin diperbarui saat kembali dari Setelan Android. **Panduan pemasangan APK** mengarah ke unduhan build di GitHub.
+3. Dengan layar terbuka, kirim pesan percakapan dari aplikasi seperti WhatsApp atau Discord. Bubble menampilkan ikon, nama pengirim jika tersedia, dan pesan. Notifikasi aplikasi biasa tampil dengan judul dan isi aslinya, sementara notifikasi sistem dan notifikasi yang berlangsung terus tetap berada di panel Android. Bubble tampil selama 3,5 detik lalu kembali ke kartu musik jika tersedia.
+4. Putar lagu dari aplikasi musik untuk melihat CD berputar. Foto album muncul jika pemutar menyediakannya. Judul lagu dan nama artis tampil jika pemutar menyediakannya. Ketuk Andi dua kali untuk menyembunyikan atau membuka kartu musik. Geser Andi untuk melihat kartu pindah sisi. Coba juga tombol jeda, lanjut, sebelumnya, dan berikutnya.
 5. Geser Andi, putar layar, lalu tahan karakter selama tiga detik untuk menyembunyikan. Beberapa layar sistem dan aplikasi dapat menyembunyikan overlay.
 
-Aktifkan **Mode Tenang** untuk menjeda bubble notifikasi. Buka **Notifikasi per aplikasi** untuk memilih **Sembunyikan**, **Ikon saja**, **Nama pengirim**, atau **Nama dan pesan**. Perubahan membersihkan pratinjau yang masih tampil atau antre.
+Aktifkan **Mode Tenang** untuk menjeda bubble notifikasi. Buka **Notifikasi per aplikasi** untuk memilih **Sembunyikan**, **Ikon saja**, **Nama pengirim (percakapan)**, atau **Pratinjau lengkap**. Untuk notifikasi biasa, pilihan nama pengirim hanya menampilkan ikon. Perubahan membersihkan pratinjau yang masih tampil atau antre.
 
 Ketuk bubble untuk membuka tujuan yang disediakan aplikasi, atau geser bubble ke samping untuk menutupnya. Aktifkan **Menepi otomatis** agar Andi menepi ketika Android melaporkan keyboard atau tampilan layar penuh. Ketika **Mode Tenang** berakhir, Andi menampilkan jumlah notifikasi per aplikasi. **Mulai fokus 25 menit** menepikan Andi hingga sesi selesai atau dihentikan.
 
@@ -39,4 +39,4 @@ Tombol **Daya** membuka menu daya Android. **Kunci** dan **Screenshot** memerluk
 
 Buka **Pilih pintasan menu** untuk memilih ikon yang muncul saat Andi diketuk. Di kartu musik, ketuk ikon lirik untuk memunculkan panel di bawah judul, artis, dan CD. Setelah izin pencarian disetujui, Andi mencari lirik lagu aktif di LRCLIB menggunakan judul dan artis selama panel ditampilkan. Lirik mengikuti posisi lagu jika data waktu tersedia.
 
-Jika muncul **Restricted setting**, buka **Info aplikasi Andi**, pilih **Allow restricted settings**, lalu aktifkan akses yang diminta melalui Setelan Android. Setelah Aksesibilitas **Andi · Tombol cepat** aktif, tombol Daya, Kunci, dan Screenshot memanggil aksi sistem. Daya tetap meminta pilihan pada menu daya.
+Jika muncul **Restricted setting**, dari **Izin & panduan instalasi** pilih **Buka info aplikasi Andi**, ketuk ⋮, pilih **Allow restricted settings**, lalu aktifkan akses yang diminta melalui Setelan Android. Setelah Aksesibilitas **Andi · Tombol cepat** aktif, tombol Daya, Kunci, dan Screenshot memanggil aksi sistem. Daya tetap meminta pilihan pada menu daya.
