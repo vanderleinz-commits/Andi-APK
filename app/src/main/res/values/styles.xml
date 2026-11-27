@@ -9,4 +9,5 @@
         <item name="android:colorAccent">#E3BAA0</item>
         <item name="android:windowLightStatusBar">false</item>
     </style>
+    <string name="quick_actions_description">Menjalankan tombol daya, kunci, dan screenshot saat diketuk di menu Andi. Tidak membaca isi layar.</string>
 </resources>

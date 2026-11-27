@@ -26,3 +26,11 @@ Aktifkan **Mode Tenang** untuk menjeda bubble notifikasi. Buka **Notifikasi per 
 Ketuk bubble untuk membuka tujuan yang disediakan aplikasi, atau geser bubble ke samping untuk menutupnya. Aktifkan **Menepi otomatis** agar Andi menepi ketika Android melaporkan keyboard atau tampilan layar penuh. Ketika **Mode Tenang** berakhir, Andi menampilkan jumlah notifikasi per aplikasi. **Mulai fokus 25 menit** menepikan Andi hingga sesi selesai atau dihentikan.
 
 Izin akses notifikasi Android terpisah dari izin Andi untuk menampilkan notifikasinya sendiri. Akses notifikasi dan sesi musik diproses di perangkat, tanpa menyimpan isi pesan. Build APK dan perilaku perangkat asli perlu diuji dengan toolchain Android dan HP yang terhubung.
+
+## Menu cepat dan pengingat
+
+Ketuk Andi sekali untuk membuka atau menutup menu cepat. Ketuk dua kali untuk membuka atau menyembunyikan kartu musik, dan tahan tiga detik untuk menyembunyikan Andi. Kartu musik punya tombol sebelumnya, putar atau jeda, berikutnya, acak, dan ulang jika pemutar mendukungnya.
+
+Buka **Kalender cepat**, pilih tanggal serta jam, lalu isi nama acara. Android dapat meminta izin **Alarm & pengingat** dan izin notifikasi. Saat pengingat berbunyi, Andi mencoba muncul selama 10 detik meskipun sebelumnya tersembunyi. Notifikasi sistem menjadi cadangan ketika layar terkunci atau sistem membatasi overlay. Pengingat yang belum berbunyi dijadwalkan lagi setelah reboot.
+
+Tombol **Daya** membuka menu daya Android. **Kunci** dan **Screenshot** memerlukan Android 9 atau lebih baru. Aktifkan **Andi · Tombol cepat** melalui menu aksesibilitas untuk memakai ketiga aksi tersebut. Layanan tombol cepat tidak membaca isi layar. Home dan senter tersedia langsung jika didukung perangkat.

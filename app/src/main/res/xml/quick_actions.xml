@@ -1,0 +1,4 @@
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:canRetrieveWindowContent="false"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:description="@string/quick_actions_description" />

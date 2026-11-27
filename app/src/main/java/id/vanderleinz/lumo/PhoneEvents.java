@@ -22,6 +22,10 @@ import android.os.Looper;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
 
+import android.support.v4.media.session.MediaControllerCompat;
+import android.support.v4.media.session.MediaSessionCompat;
+import android.support.v4.media.session.PlaybackStateCompat;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -32,6 +36,13 @@ public final class PhoneEvents extends NotificationListenerService {
     private final List<MediaController> controllers = new ArrayList<>();
     private MediaSessionManager manager;
     private MediaController selected;
+    private MediaControllerCompat modesController;
+    private android.media.session.MediaSession.Token modesToken;
+    private final MediaControllerCompat.Callback modeChanges = new MediaControllerCompat.Callback() {
+        @Override public void onShuffleModeChanged(int mode) { publishModes(); }
+        @Override public void onRepeatModeChanged(int mode) { publishModes(); }
+        @Override public void onSessionReady() { publishModes(); }
+    };
     private boolean musicShown;
     private boolean clearMusicPending;
     private final Runnable clearMusic = () -> {
@@ -97,6 +108,7 @@ public final class PhoneEvents extends NotificationListenerService {
         musicShown = false;
         recentMessages.clear();
         selected = null;
+        clearModesController();
         clearControllers();
         if (connected == this) {
             connected = null;
@@ -256,9 +268,11 @@ public final class PhoneEvents extends NotificationListenerService {
             CharSequence title = metadata == null ? null : metadata.getDescription().getTitle();
             if (state != null && title != null && title.length() > 0) {
                 publishTrack(state, metadata);
+                publishModes();
                 return;
             }
         }
+        clearModesController();
         if (musicShown && !clearMusicPending) {
             clearMusicPending = true;
             main.postDelayed(clearMusic, 2200);
@@ -292,6 +306,78 @@ public final class PhoneEvents extends NotificationListenerService {
         clearMusicPending = false;
         musicShown = true;
         overlay.showMusic(description.getTitle(), artist, art, state.getState() == PlaybackState.STATE_PLAYING, state.getActions());
+    }
+
+    private void clearModesController() {
+        if (modesController != null) modesController.unregisterCallback(modeChanges);
+        modesController = null;
+        modesToken = null;
+    }
+
+    private PlaybackState.CustomAction customMode(boolean shuffle) {
+        if (selected == null || selected.getPlaybackState() == null) return null;
+        String wanted = shuffle ? "shuffle" : "repeat";
+        for (PlaybackState.CustomAction candidate : selected.getPlaybackState().getCustomActions()) {
+            String id = candidate.getAction().toLowerCase(java.util.Locale.ROOT);
+            if (id.endsWith(wanted) || id.endsWith("_" + wanted + "_mode")) return candidate;
+        }
+        return null;
+    }
+
+    private void publishModes() {
+        try {
+            refreshModes();
+        } catch (RuntimeException error) {
+            Log.w("AndiMusic", "Could not read playback modes", error);
+            if (overlay != null) overlay.updateMusicModes(false, false, -1, -1);
+        }
+    }
+
+    private void refreshModes() {
+        if (overlay == null || selected == null) return;
+        PlaybackState state = selected.getPlaybackState();
+        if (state == null) return;
+        long actions = state.getActions();
+        final boolean canShuffle = (actions & PlaybackStateCompat.ACTION_SET_SHUFFLE_MODE) != 0;
+        final boolean canRepeat = (actions & PlaybackStateCompat.ACTION_SET_REPEAT_MODE) != 0;
+        if (modesToken != null && !selected.getSessionToken().equals(modesToken)) clearModesController();
+        if ((canShuffle || canRepeat) && modesController == null) {
+            clearModesController();
+            modesToken = selected.getSessionToken();
+            modesController = new MediaControllerCompat(this, MediaSessionCompat.Token.fromToken(modesToken));
+            modesController.registerCallback(modeChanges, main);
+        }
+        int shuffle = modesController == null ? -1 : modesController.getShuffleMode();
+        int repeat = modesController == null ? -1 : modesController.getRepeatMode();
+        overlay.updateMusicModes(canShuffle || customMode(true) != null,
+                canRepeat || customMode(false) != null, shuffle, repeat);
+    }
+
+    static void changePlaybackMode(boolean shuffle) {
+        PhoneEvents listener = connected;
+        if (listener == null || listener.selected == null) return;
+        try {
+            listener.sendPlaybackMode(shuffle);
+        } catch (RuntimeException error) {
+            Log.w("AndiMusic", "Player rejected a playback mode", error);
+        }
+    }
+
+    private void sendPlaybackMode(boolean shuffle) {
+        PlaybackState.CustomAction custom = customMode(shuffle);
+        PlaybackState state = selected.getPlaybackState();
+        long supportedAction = shuffle ? PlaybackStateCompat.ACTION_SET_SHUFFLE_MODE :
+                PlaybackStateCompat.ACTION_SET_REPEAT_MODE;
+        if (modesController != null && state != null && (state.getActions() & supportedAction) != 0) {
+            MediaControllerCompat.TransportControls controls = modesController.getTransportControls();
+            if (shuffle) controls.setShuffleMode(modesController.getShuffleMode() > 0 ? 0 : 1);
+            else {
+                int mode = modesController.getRepeatMode();
+                controls.setRepeatMode(mode >= 0 && mode < 2 ? mode + 1 : 0);
+            }
+        } else if (custom != null) {
+            selected.getTransportControls().sendCustomAction(custom, null);
+        }
     }
 
     static void control(long action) {

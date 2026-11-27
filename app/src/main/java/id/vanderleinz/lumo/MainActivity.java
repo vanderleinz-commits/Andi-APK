@@ -34,6 +34,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 public final class MainActivity extends Activity {
+    static final String ACTION_CALENDAR = "id.vanderleinz.andi.CALENDAR";
     private static final int NAVY = 0xff10192b;
     private static final int WHITE = 0xffedf3ff;
     private static final int MUTED = 0xffb5c2df;
@@ -137,7 +138,19 @@ public final class MainActivity extends Activity {
         focus.setOnClickListener(view -> toggleFocus());
         add(panel, focus, dp(48), 8);
 
-        TextView hint = label("Ketuk Andi untuk buka atau tutup musik • Geser untuk pindah\nTahan tiga detik untuk menyembunyikan Andi", 14, MUTED);
+        Button calendar = new Button(this);
+        calendar.setAllCaps(false);
+        calendar.setText("Kalender cepat");
+        calendar.setOnClickListener(view -> showCalendar());
+        add(panel, calendar, dp(48), 8);
+
+        Button quickAccess = new Button(this);
+        quickAccess.setAllCaps(false);
+        quickAccess.setText("Akses daya, kunci, dan screenshot");
+        quickAccess.setOnClickListener(view -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
+        add(panel, quickAccess, dp(48), 8);
+
+        TextView hint = label("Ketuk untuk menu cepat • Ketuk dua kali untuk musik\nTahan tiga detik untuk menyembunyikan Andi", 14, MUTED);
         hint.setLineSpacing(dp(3), 1);
         add(panel, hint, -2, 15);
         setContentView(scroll);
@@ -169,6 +182,109 @@ public final class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         renderState();
+        openRequestedCalendar();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        openRequestedCalendar();
+    }
+
+    private void openRequestedCalendar() {
+        if (!ACTION_CALENDAR.equals(getIntent().getAction())) return;
+        getIntent().setAction(null);
+        showCalendar();
+    }
+
+    private void showCalendar() {
+        java.util.List<ReminderReceiver.Reminder> reminders = ReminderReceiver.list(this);
+        String[] rows = new String[reminders.size() + 1];
+        rows[0] = "Tambah pengingat";
+        java.text.DateFormat formatter = java.text.DateFormat.getDateTimeInstance(
+                java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT);
+        for (int index = 0; index < reminders.size(); index++) {
+            ReminderReceiver.Reminder reminder = reminders.get(index);
+            rows[index + 1] = formatter.format(new java.util.Date(reminder.time)) + " · " + reminder.title;
+        }
+        AlertDialog.Builder dialog = new AlertDialog.Builder(this).setTitle("Kalender cepat")
+                .setItems(rows, (window, index) -> {
+                    if (index == 0) pickReminderDate();
+                    else {
+                        ReminderReceiver.Reminder reminder = reminders.get(index - 1);
+                        new AlertDialog.Builder(this).setTitle(reminder.title).setMessage(rows[index])
+                                .setNegativeButton("Kembali", (confirm, which) -> showCalendar())
+                                .setPositiveButton("Hapus", (confirm, which) -> {
+                                    ReminderReceiver.delete(this, reminder.id);
+                                    showCalendar();
+                                }).show();
+                    }
+                }).setNegativeButton("Tutup", null);
+        if (!ReminderReceiver.canScheduleExact(this) && Build.VERSION.SDK_INT >= 31) {
+            dialog.setNeutralButton("Izinkan alarm tepat waktu", (window, which) -> {
+                try {
+                    startActivity(new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                            Uri.parse("package:" + getPackageName())));
+                } catch (android.content.ActivityNotFoundException error) {
+                    Toast.makeText(this, "Buka Alarms & reminders di Setelan Android.", Toast.LENGTH_LONG).show();
+                }
+            });
+        }
+        dialog.show();
+    }
+
+    private void pickReminderDate() {
+        java.util.Calendar date = java.util.Calendar.getInstance();
+        android.app.DatePickerDialog days = new android.app.DatePickerDialog(this, (pick, year, month, day) -> {
+            date.set(year, month, day);
+            new android.app.TimePickerDialog(this, (clock, hour, minute) -> {
+                date.set(java.util.Calendar.HOUR_OF_DAY, hour);
+                date.set(java.util.Calendar.MINUTE, minute);
+                date.set(java.util.Calendar.SECOND, 0);
+                date.set(java.util.Calendar.MILLISECOND, 0);
+                if (date.getTimeInMillis() <= System.currentTimeMillis()) {
+                    Toast.makeText(this, "Pilih waktu yang masih akan datang.", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                saveReminder(date.getTimeInMillis());
+            }, date.get(java.util.Calendar.HOUR_OF_DAY), date.get(java.util.Calendar.MINUTE),
+                    android.text.format.DateFormat.is24HourFormat(this)).show();
+        }, date.get(java.util.Calendar.YEAR), date.get(java.util.Calendar.MONTH), date.get(java.util.Calendar.DAY_OF_MONTH));
+        days.getDatePicker().setMinDate(System.currentTimeMillis());
+        days.show();
+    }
+
+    private void saveReminder(long time) {
+        android.widget.EditText title = new android.widget.EditText(this);
+        title.setHint("Nama acara");
+        title.setSingleLine(true);
+        title.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(100)});
+        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Pengingat baru").setView(title)
+                .setNegativeButton("Batal", null).setPositiveButton("Simpan", null).create();
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button -> {
+            String event = title.getText().toString().trim();
+            if (event.isEmpty()) {
+                title.setError("Isi nama acara.");
+                return;
+            }
+            if (time <= System.currentTimeMillis()) {
+                Toast.makeText(this, "Pilih waktu yang masih akan datang.", Toast.LENGTH_SHORT).show();
+                dialog.dismiss();
+                pickReminderDate();
+                return;
+            }
+            boolean exact = ReminderReceiver.add(this, event, time);
+            Toast.makeText(this, exact ? "Pengingat tersimpan." :
+                    "Pengingat tersimpan. Android bisa menundanya jika izin alarm tepat waktu mati.",
+                    Toast.LENGTH_LONG).show();
+            dialog.dismiss();
+            if (Build.VERSION.SDK_INT >= 33
+                    && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 2);
+            }
+        }));
+        dialog.show();
     }
 
     @Override
