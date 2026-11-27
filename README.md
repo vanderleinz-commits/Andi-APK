@@ -1,4 +1,4 @@
-# Andi Android · trial 0.4.5
+# Andi Android · trial 0.4.6
 
 Push proyek ke repo GitHub dengan GitHub Actions aktif untuk membangun APK di server GitHub. Workflow **Build Andi debug APK** berjalan saat push ke `main` dan dapat dijalankan manual dari tab **Actions**. Setelah build sukses, unduh artefak **Andi-debug**, ekstrak, lalu buka `Andi-debug.apk` di HP.
 
@@ -29,7 +29,7 @@ Izin akses notifikasi Android terpisah dari izin Andi untuk menampilkan notifika
 
 ## Tampilan Andi
 
-Dashboard menggunakan palet navy, cocoa, dan mint dengan outline serta bayangan tegas. Buka **Karakter Andi** untuk memilih **Pari Klasik**, **Pari Origami**, **Pari Mochi**, atau **Pari Retro**. Pilihan tersimpan dan langsung dipakai di dashboard serta saat Andi melayang. **Kacamata Andi** mengatur bingkai untuk karakter yang dipilih. Saat melayang, Andi tampil langsung di atas layar dengan latar transparan. **Animasi bubble** mengatur gerakan ikon pintasan serta transisi kartu.
+Dashboard menggunakan palet navy, cocoa, dan mint dengan outline serta bayangan tegas. Buka **Karakter Andi** untuk memilih **Andi Klasik**, **Momo · Persik**, **Piko · Awan**, atau **Lumi · Bintang**. Pilihan tersimpan dan langsung dipakai di dashboard serta saat Andi melayang. **Kacamata Andi** menambahkan bingkai tipis dan mati secara default. Desain pari dari versi sebelumnya yang telah diganti kembali ke Andi Klasik. Saat melayang, Andi tampil langsung di atas layar dengan latar transparan. **Animasi bubble** mengatur gerakan ikon pintasan serta transisi kartu.
 
 ## Menu cepat dan pengingat
 

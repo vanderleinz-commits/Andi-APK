@@ -9,8 +9,6 @@ import android.os.SystemClock;
 import android.view.View;
 
 final class PetView extends View {
-    private static final int CREAM = 0xffffedcb;
-    private static final int CARAMEL = 0xffe19b56;
     private static final float CENTER = 60f;
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -22,7 +20,7 @@ final class PetView extends View {
     private long lastTouch = born;
     private long reactionUntil;
     private boolean dragging;
-    private boolean glasses = true;
+    private boolean glasses;
     private boolean floating;
     private boolean staticPreview;
     private int reaction;
@@ -112,85 +110,58 @@ final class PetView extends View {
         float y = style.eyeY;
         float left = CENTER - style.eyeSpacing;
         float right = CENTER + style.eyeSpacing;
-        if (asleep || blinking) {
-            stroke(CREAM, 2.2f);
-            canvas.drawLine(left - 3.5f, y, left + 3.5f, y, paint);
-            canvas.drawLine(right - 3.5f, y, right + 3.5f, y, paint);
-        } else {
-            boolean smiling = reacting ? reaction == 1 : style == PetStyle.MOCHI || style == PetStyle.ORIGAMI;
-            drawEye(canvas, left, y, smiling);
-            drawEye(canvas, right, y, smiling);
-        }
+        drawEye(canvas, left, y, reacting, asleep || blinking);
+        drawEye(canvas, right, y, reacting, asleep || blinking);
 
-        float mouthY = y + 8;
+        float mouthY = y + 6f;
         if (asleep || dragging || (reacting && reaction == 2)) {
-            fill(CREAM);
-            canvas.drawOval(57, mouthY - 2, 63, mouthY + 4, paint);
-        } else if (style == PetStyle.RETRO) {
-            fill(CREAM);
-            canvas.drawRect(56, mouthY, 58, mouthY + 2, paint);
-            canvas.drawRect(58, mouthY + 2, 62, mouthY + 4, paint);
-            canvas.drawRect(62, mouthY, 64, mouthY + 2, paint);
+            fill(style.faceColor);
+            canvas.drawOval(57, mouthY - 1, 63, mouthY + 4, paint);
         } else {
-            stroke(CREAM, 2.2f);
+            stroke(style.faceColor, 2.2f);
             line.reset();
-            line.moveTo(56, mouthY);
-            line.quadTo(60, mouthY + (reacting ? 9 : 6), 64, mouthY);
+            line.moveTo(55.5f, mouthY);
+            line.quadTo(CENTER, mouthY + (reacting ? 8 : 5.5f), 64.5f, mouthY);
             canvas.drawPath(line, paint);
         }
+
+        fill(style.cheekColor);
+        float cheekOffset = style == PetStyle.CLASSIC ? 4.5f : 5f;
+        canvas.drawOval(left - cheekOffset - 3.8f, y + 7f, left - cheekOffset + 3.8f, y + 10.5f, paint);
+        canvas.drawOval(right + cheekOffset - 3.8f, y + 7f, right + cheekOffset + 3.8f, y + 10.5f, paint);
     }
 
-    private void drawEye(Canvas canvas, float x, float y, boolean smiling) {
-        if (style == PetStyle.RETRO && !smiling) {
-            fill(CREAM);
-            canvas.drawRect(x - 3.8f, y - 1.9f, x + 3.8f, y + 1.9f, paint);
-            canvas.drawRect(x - 1.9f, y - 3.8f, x + 1.9f, y + 3.8f, paint);
-        } else if (smiling) {
-            stroke(CREAM, 2.4f);
+    private void drawEye(Canvas canvas, float x, float y, boolean reacting, boolean closed) {
+        if (closed) {
+            stroke(style.faceColor, 2.2f);
+            canvas.drawLine(x - 3, y, x + 3, y, paint);
+        } else if (reacting && reaction == 1) {
+            stroke(style.faceColor, 2.4f);
             line.reset();
             line.moveTo(x - 4, y + 1);
             line.quadTo(x, y - 5, x + 4, y + 1);
             canvas.drawPath(line, paint);
         } else {
-            float height = dragging ? 6.2f : 4.7f;
-            fill(CREAM);
-            canvas.drawRoundRect(x - 2.6f, y - height, x + 2.6f, y + height, 2.6f, 2.6f, paint);
+            float width = style == PetStyle.CLASSIC ? 3.8f : 3f;
+            float height = (style == PetStyle.CLASSIC ? 6 : 3.8f) + (dragging ? 1.5f : 0);
+            fill(style.faceColor);
+            canvas.drawRoundRect(x - width, y - height, x + width, y + height, width, width, paint);
         }
     }
 
     private void drawGlasses(Canvas canvas) {
         float y = style.eyeY;
-        float width = style == PetStyle.MOCHI ? 12f : 10f;
+        float width = style == PetStyle.CLASSIC ? 9.2f : 7.7f;
         float left = CENTER - style.eyeSpacing;
         float right = CENTER + style.eyeSpacing;
-        stroke(CARAMEL, style == PetStyle.MOCHI ? 3.1f : 2.5f);
+        int frame = style == PetStyle.CLASSIC ? 0xffbd9f83 : (0x99000000 | (style.faceColor & 0x00ffffff));
+        stroke(frame, 1.55f);
+        canvas.drawRoundRect(left - width, y - 7.4f, left + width, y + 7.4f, 6f, 6f, paint);
+        canvas.drawRoundRect(right - width, y - 7.4f, right + width, y + 7.4f, 6f, 6f, paint);
         line.reset();
         line.moveTo(left + width, y);
-        line.quadTo(CENTER, y - 3.6f, right - width, y);
+        line.quadTo(CENTER, y - 2.5f, right - width, y);
         canvas.drawPath(line, paint);
-        drawLens(canvas, left, y, width);
-        drawLens(canvas, right, y, width);
-    }
-
-    private void drawLens(Canvas canvas, float x, float y, float width) {
-        switch (style) {
-            case ORIGAMI:
-                line.reset();
-                line.moveTo(x - width, y);
-                line.lineTo(x - width * .49f, y - 8.4f);
-                line.lineTo(x + width * .49f, y - 8.4f);
-                line.lineTo(x + width, y);
-                line.lineTo(x + width * .49f, y + 8.4f);
-                line.lineTo(x - width * .49f, y + 8.4f);
-                line.close();
-                canvas.drawPath(line, paint);
-                break;
-            case RETRO:
-                canvas.drawRoundRect(x - width, y - 7.5f, x + width, y + 7.5f, 3.2f, 3.2f, paint);
-                break;
-            default:
-                canvas.drawCircle(x, y, width, paint);
-        }
     }
 
     @Override

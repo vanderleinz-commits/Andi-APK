@@ -128,7 +128,7 @@ public final class MainActivity extends Activity {
         renderCharacter(characters, preview, NotificationPreferences.character(settings));
         characters.setOnClickListener(view -> chooseCharacter(settings, characters, preview));
         add(panel, characters, -2, 7);
-        Switch glasses = setting("Kacamata Andi", settings, NotificationPreferences.GLASSES, true);
+        Switch glasses = setting("Kacamata Andi", settings, NotificationPreferences.GLASSES, false);
         preview.setGlasses(glasses.isChecked());
         glasses.setOnCheckedChangeListener((button, checked) -> {
             settings.edit().putBoolean(NotificationPreferences.GLASSES, checked).apply();
@@ -318,7 +318,7 @@ public final class MainActivity extends Activity {
 
     private void chooseCharacter(SharedPreferences settings, Button picker, PetView preview) {
         PetStyle selected = NotificationPreferences.character(settings);
-        boolean glasses = settings.getBoolean(NotificationPreferences.GLASSES, true);
+        boolean glasses = settings.getBoolean(NotificationPreferences.GLASSES, false);
         ScrollView scroll = new ScrollView(this);
         LinearLayout catalog = new LinearLayout(this);
         catalog.setOrientation(LinearLayout.VERTICAL);

@@ -159,7 +159,7 @@ public final class FloatingPetService extends Service {
                 if (key == null || key.startsWith(NotificationPreferences.APP_PREFIX)) clearAlert();
                 if (NotificationPreferences.AUTO_TUCK.equals(key)) updateTuckedState();
                 if (pet != null && (key == null || NotificationPreferences.GLASSES.equals(key))) {
-                    pet.setGlasses(settings.getBoolean(NotificationPreferences.GLASSES, true));
+                    pet.setGlasses(settings.getBoolean(NotificationPreferences.GLASSES, false));
                 }
                 if (pet != null && (key == null || NotificationPreferences.CHARACTER.equals(key))) {
                     pet.setCharacter(NotificationPreferences.character(settings));
@@ -312,7 +312,7 @@ public final class FloatingPetService extends Service {
         companion.setFloating();
         SharedPreferences appearance = NotificationPreferences.get(this);
         companion.setCharacter(NotificationPreferences.character(appearance));
-        companion.setGlasses(appearance.getBoolean(NotificationPreferences.GLASSES, true));
+        companion.setGlasses(appearance.getBoolean(NotificationPreferences.GLASSES, false));
         companion.setContentDescription("Andi. Ketuk untuk menu cepat. Ketuk dua kali untuk musik. Tahan tiga detik untuk menyembunyikan Andi.");
         companion.setOnClickListener(view -> {
             companion.react();
