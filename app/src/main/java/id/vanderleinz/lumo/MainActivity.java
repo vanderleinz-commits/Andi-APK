@@ -125,9 +125,9 @@ public final class MainActivity extends Activity {
         add(panel, perApp, dp(48), 8);
 
         Switch autoTuck = new Switch(this);
-        autoTuck.setText("Menepi otomatis");
+        autoTuck.setText("Menepi saat keyboard terbuka");
         autoTuck.setTextColor(WHITE);
-        autoTuck.setChecked(notificationSettings.getBoolean(NotificationPreferences.AUTO_TUCK, true));
+        autoTuck.setChecked(notificationSettings.getBoolean(NotificationPreferences.AUTO_TUCK, false));
         autoTuck.setOnCheckedChangeListener((button, checked) -> notificationSettings.edit()
                 .putBoolean(NotificationPreferences.AUTO_TUCK, checked).apply());
         add(panel, autoTuck, dp(48), 8);

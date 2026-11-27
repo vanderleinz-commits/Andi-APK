@@ -75,7 +75,7 @@ public final class FloatingPetService extends Service {
     private DiscView disc;
     private boolean bubbleOnRight;
     private boolean bubbleAdded;
-    private boolean keyboardOrFullscreen;
+    private boolean keyboardVisible;
     private boolean tucked;
     private Alert currentAlert;
     private final Map<String, QuietCount> quietCounts = new LinkedHashMap<>();
@@ -251,11 +251,12 @@ public final class FloatingPetService extends Service {
         companion.setOnTouchListener(petTouch);
         companion.setOnApplyWindowInsetsListener((view, insets) -> {
             if (Build.VERSION.SDK_INT >= 30) {
+                int keyboardBottom = insets.getInsets(WindowInsets.Type.ime()).bottom;
+                int navigationBottom = insets.getInsets(WindowInsets.Type.navigationBars()).bottom;
                 boolean obstructed = insets.isVisible(WindowInsets.Type.ime())
-                        || (!insets.isVisible(WindowInsets.Type.statusBars())
-                            && !insets.isVisible(WindowInsets.Type.navigationBars()));
-                if (keyboardOrFullscreen != obstructed) {
-                    keyboardOrFullscreen = obstructed;
+                        && keyboardBottom > navigationBottom + dp(48);
+                if (keyboardVisible != obstructed) {
+                    keyboardVisible = obstructed;
                     main.post(this::updateTuckedState);
                 }
             }
@@ -390,8 +391,8 @@ public final class FloatingPetService extends Service {
 
     private void updateTuckedState() {
         if (pet == null) return;
-        boolean automatic = NotificationPreferences.get(this).getBoolean(NotificationPreferences.AUTO_TUCK, true);
-        boolean next = focusEnd != 0 || (automatic && keyboardOrFullscreen);
+        boolean automatic = NotificationPreferences.get(this).getBoolean(NotificationPreferences.AUTO_TUCK, false);
+        boolean next = focusEnd != 0 || (automatic && keyboardVisible);
         if (tucked == next) return;
         tucked = next;
         params.alpha = tucked ? 0f : 1f;
