@@ -69,6 +69,8 @@ public final class PhoneEvents extends NotificationListenerService {
 
     private final MediaSessionManager.OnActiveSessionsChangedListener sessions = this::replaceControllers;
 
+    static boolean isConnected() { return connected != null; }
+
     static void attach(FloatingPetService service) {
         overlay = service;
         if (connected != null) connected.publishMusic();
@@ -305,6 +307,7 @@ public final class PhoneEvents extends NotificationListenerService {
         main.removeCallbacks(clearMusic);
         clearMusicPending = false;
         musicShown = true;
+        overlay.updateLyrics(description.getTitle(), artist, metadata.getLong(MediaMetadata.METADATA_KEY_DURATION), state);
         overlay.showMusic(description.getTitle(), artist, art, state.getState() == PlaybackState.STATE_PLAYING, state.getActions());
     }
 

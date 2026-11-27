@@ -37,8 +37,12 @@ import android.view.WindowMetrics;
 import android.widget.Toast;
 import android.widget.TextView;
 import android.widget.LinearLayout;
-import android.widget.Button;
 import android.widget.ImageView;
+import android.widget.ImageButton;
+import android.widget.ScrollView;
+import android.content.res.ColorStateList;
+import android.graphics.Color;
+import android.graphics.drawable.RippleDrawable;
 import android.util.Log;
 import android.app.KeyguardManager;
 import java.util.ArrayDeque;
@@ -76,8 +80,13 @@ public final class FloatingPetService extends Service {
     private LinearLayout musicPanel;
     private LinearLayout quickPanel;
     private boolean quickOpen;
-    private Button shuffle;
-    private Button repeat;
+    private boolean quickClosing;
+    private int shortcutCount;
+    private GradientDrawable cardBackground;
+    private ImageButton lyricsButton;
+    private LyricsPanel lyrics;
+    private ImageButton shuffle;
+    private ImageButton repeat;
     private boolean temporaryReminder;
     private boolean reminderShowing;
     private final Runnable endReminder = this::endReminder;
@@ -115,9 +124,9 @@ public final class FloatingPetService extends Service {
             this.destination = destination;
         }
     }
-    private Button previousTrack;
-    private Button playPause;
-    private Button nextTrack;
+    private ImageButton previousTrack;
+    private ImageButton playPause;
+    private ImageButton nextTrack;
     private boolean hasMusic;
     private boolean alertActive;
     private boolean musicHidden = true;
@@ -127,6 +136,14 @@ public final class FloatingPetService extends Service {
             (settings, key) -> {
                 if (key == null || key.startsWith(NotificationPreferences.APP_PREFIX)) clearAlert();
                 if (NotificationPreferences.AUTO_TUCK.equals(key)) updateTuckedState();
+                if (NotificationPreferences.SHORTCUTS.equals(key) && quickPanel != null) {
+                    rebuildShortcuts();
+                    if (shortcutCount == 0) closeQuickMenu(false);
+                    else showPanel(0);
+                }
+                if (NotificationPreferences.LYRICS_CONSENT.equals(key) && lyrics != null) {
+                    setLyricsEnabled(settings.getBoolean(NotificationPreferences.LYRICS_CONSENT, false));
+                }
                 if (NotificationPreferences.QUIET.equals(key)) {
                     clearAlert();
                     if (settings.getBoolean(NotificationPreferences.QUIET, false)) quietCounts.clear();
@@ -262,8 +279,7 @@ public final class FloatingPetService extends Service {
         companion.setOnClickListener(view -> {
             companion.react();
             if (!temporaryReminder) {
-                quickOpen = !quickOpen;
-                showPanel(quickOpen ? 1 : 0);
+                toggleQuickMenu();
             }
         });
         companion.setOnLongClickListener(view -> {
@@ -297,11 +313,11 @@ public final class FloatingPetService extends Service {
         bubble = new LinearLayout(overlayContext);
         bubble.setOrientation(LinearLayout.VERTICAL);
         bubble.setPadding(dp(8), dp(2), dp(8), dp(2));
-        GradientDrawable background = new GradientDrawable();
-        background.setCornerRadius(dp(16));
-        background.setColor(0xff202c45);
-        background.setStroke(dp(1), 0xffbc8969);
-        bubble.setBackground(background);
+        cardBackground = new GradientDrawable();
+        cardBackground.setCornerRadius(dp(16));
+        cardBackground.setColor(0xff202c45);
+        cardBackground.setStroke(dp(1), 0xffbc8969);
+        bubble.setBackground(cardBackground);
         alertPanel = new LinearLayout(overlayContext);
         alertPanel.setGravity(Gravity.CENTER_VERTICAL);
         alertPanel.setMinimumHeight(dp(42));
@@ -340,37 +356,51 @@ public final class FloatingPetService extends Service {
         artistView.setTextColor(0xffd6b7a4);
         artistView.setPadding(0, 0, 0, 0);
         musicDetails.addView(artistView);
+        lyricsButton = newIcon(R.drawable.ic_andi_lyrics, "Tampilkan lirik", false);
+        row.addView(lyricsButton, new LinearLayout.LayoutParams(dp(38), dp(38)));
+        lyricsButton.setOnClickListener(view -> {
+            if (lyrics.isEnabled()) {
+                setLyricsEnabled(false);
+            } else if (NotificationPreferences.get(this).getBoolean(NotificationPreferences.LYRICS_CONSENT, false)) {
+                setLyricsEnabled(true);
+            } else {
+                launch(new Intent(this, MainActivity.class).setAction(MainActivity.ACTION_LYRICS)
+                        .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP));
+            }
+        });
         LinearLayout controls = new LinearLayout(overlayContext);
+        controls.setGravity(Gravity.CENTER_VERTICAL);
         musicPanel.addView(controls);
-        previousTrack = addPlaybackButton(controls, "⏮", "Lagu sebelumnya", PlaybackState.ACTION_SKIP_TO_PREVIOUS);
-        playPause = addPlaybackButton(controls, "▶", "Putar",
-                PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_PLAY_PAUSE);
-        nextTrack = addPlaybackButton(controls, "⏭", "Lagu berikutnya", PlaybackState.ACTION_SKIP_TO_NEXT);
-        LinearLayout modes = new LinearLayout(overlayContext);
-        musicPanel.addView(modes);
-        shuffle = newMusicButton("Acak", "Acak lagu");
-        repeat = newMusicButton("Ulang", "Ulangi lagu");
-        modes.addView(shuffle, new LinearLayout.LayoutParams(0, dp(34), 1));
-        modes.addView(repeat, new LinearLayout.LayoutParams(0, dp(34), 1));
-        shuffle.setOnClickListener(view -> PhoneEvents.changePlaybackMode(true));
-        repeat.setOnClickListener(view -> PhoneEvents.changePlaybackMode(false));
+        shuffle = addMusicIcon(controls, R.drawable.ic_andi_shuffle, "Acak lagu",
+                false, () -> PhoneEvents.changePlaybackMode(true));
+        previousTrack = addMusicIcon(controls, R.drawable.ic_andi_previous, "Lagu sebelumnya", false,
+                () -> PhoneEvents.control(PlaybackState.ACTION_SKIP_TO_PREVIOUS));
+        playPause = addMusicIcon(controls, R.drawable.ic_andi_play, "Putar", true,
+                () -> PhoneEvents.control(PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_PLAY_PAUSE));
+        nextTrack = addMusicIcon(controls, R.drawable.ic_andi_next, "Lagu berikutnya", false,
+                () -> PhoneEvents.control(PlaybackState.ACTION_SKIP_TO_NEXT));
+        repeat = addMusicIcon(controls, R.drawable.ic_andi_repeat, "Ulangi lagu",
+                false, () -> PhoneEvents.changePlaybackMode(false));
         setPlaybackEnabled(shuffle, false);
         setPlaybackEnabled(repeat, false);
 
+        ScrollView lyricScroll = new ScrollView(overlayContext);
+        lyricScroll.setVisibility(View.GONE);
+        lyricScroll.setFillViewport(true);
+        TextView lyricText = new TextView(overlayContext);
+        lyricText.setTextColor(0xffffe5c7);
+        lyricText.setTextSize(13);
+        lyricText.setPadding(dp(6), dp(4), dp(6), dp(4));
+        lyricScroll.addView(lyricText);
+        musicPanel.addView(lyricScroll, new LinearLayout.LayoutParams(-1, dp(72)));
+        lyrics = new LyricsPanel(main, lyricScroll, lyricText);
+
         quickPanel = new LinearLayout(overlayContext);
         quickPanel.setOrientation(LinearLayout.VERTICAL);
+        quickPanel.setGravity(Gravity.CENTER_HORIZONTAL);
         quickPanel.setVisibility(View.GONE);
         bubble.addView(quickPanel);
-        LinearLayout firstRow = new LinearLayout(overlayContext);
-        LinearLayout secondRow = new LinearLayout(overlayContext);
-        quickPanel.addView(firstRow);
-        quickPanel.addView(secondRow);
-        addShortcut(firstRow, "Kalender", () -> openCalendar());
-        addShortcut(firstRow, "Home", () -> launch(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)));
-        addShortcut(firstRow, "Senter", this::toggleTorch);
-        addShortcut(secondRow, "Daya", () -> runSystemAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_POWER_DIALOG));
-        addShortcut(secondRow, "Kunci", () -> runSystemAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN));
-        addShortcut(secondRow, "Screenshot", () -> runSystemAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT));
+        rebuildShortcuts();
 
         bubbleParams = new WindowManager.LayoutParams(dp(246), WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
@@ -380,17 +410,99 @@ public final class FloatingPetService extends Service {
         bubbleParams.gravity = Gravity.TOP | Gravity.LEFT;
     }
 
-    private void addShortcut(LinearLayout row, String label, Runnable action) {
-        Button button = newMusicButton(label, label);
-        button.setTextSize(11);
-        button.setAllCaps(false);
-        button.setMaxLines(1);
-        row.addView(button, new LinearLayout.LayoutParams(0, dp(44), 1));
-        button.setOnClickListener(view -> {
-            quickOpen = false;
+    private void rebuildShortcuts() {
+        quickPanel.removeAllViews();
+        shortcutCount = 0;
+        int selected = NotificationPreferences.get(this).getInt(
+                NotificationPreferences.SHORTCUTS, NotificationPreferences.ALL_SHORTCUTS);
+        int[] icons = {R.drawable.ic_andi_calendar, R.drawable.ic_andi_home, R.drawable.ic_andi_torch,
+                R.drawable.ic_andi_power, R.drawable.ic_andi_lock, R.drawable.ic_andi_screenshot};
+        Runnable[] actions = {this::openCalendar,
+                () -> launch(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)),
+                this::toggleTorch,
+                () -> runSystemAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_POWER_DIALOG),
+                () -> runSystemAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN),
+                () -> runSystemAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT)};
+        LinearLayout row = null;
+        for (int i = 0; i < icons.length; i++) {
+            if ((selected & (1 << i)) == 0) continue;
+            if (shortcutCount % 3 == 0) {
+                row = new LinearLayout(overlayContext);
+                row.setGravity(Gravity.CENTER);
+                quickPanel.addView(row);
+            }
+            String label = NotificationPreferences.SHORTCUT_LABELS[i];
+            ImageButton button = newIcon(icons[i], label, false);
+            button.setBackground(circleRipple(0xff263754, 0xffbc8969));
+            LinearLayout.LayoutParams item = new LinearLayout.LayoutParams(dp(42), dp(42));
+            item.setMargins(dp(3), dp(3), dp(3), dp(3));
+            row.addView(button, item);
+            Runnable action = actions[i];
+            button.setOnClickListener(view -> {
+                closeQuickMenu(false);
+                action.run();
+            });
+            shortcutCount++;
+        }
+    }
+
+    private void toggleQuickMenu() {
+        if (quickOpen) {
+            closeQuickMenu(true);
+            return;
+        }
+        if (shortcutCount == 0) {
+            Toast.makeText(this, "Pilih pintasan menu di aplikasi Andi.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        quickPanel.animate().cancel();
+        quickClosing = false;
+        quickOpen = true;
+        showPanel(0);
+        if (!alertActive && !tucked && android.animation.ValueAnimator.areAnimatorsEnabled()) {
+            quickPanel.setPivotX(bubbleOnRight ? 0 : quickPanel.getMeasuredWidth());
+            quickPanel.setPivotY(quickPanel.getMeasuredHeight() / 2f);
+            quickPanel.setScaleX(0.68f);
+            quickPanel.setScaleY(0.68f);
+            quickPanel.setAlpha(0f);
+            quickPanel.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(210)
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+        } else resetQuickAnimation();
+    }
+
+    private void closeQuickMenu(boolean animate) {
+        quickPanel.animate().cancel();
+        quickOpen = false;
+        if (animate && !alertActive && !tucked && android.animation.ValueAnimator.areAnimatorsEnabled()) {
+            quickClosing = true;
+            quickPanel.animate().alpha(0f).scaleX(0.68f).scaleY(0.68f).setDuration(155)
+                    .withEndAction(() -> {
+                        quickClosing = false;
+                        resetQuickAnimation();
+                        showPanel(0);
+                    }).start();
+        } else {
+            quickClosing = false;
+            resetQuickAnimation();
             showPanel(0);
-            action.run();
-        });
+        }
+    }
+
+    private void resetQuickAnimation() {
+        quickPanel.setAlpha(1f);
+        quickPanel.setScaleX(1f);
+        quickPanel.setScaleY(1f);
+    }
+
+    private void setLyricsEnabled(boolean enabled) {
+        lyrics.setEnabled(enabled);
+        lyricsButton.setImageTintList(ColorStateList.valueOf(enabled ? 0xff9be6bd : 0xffffe5c7));
+        lyricsButton.setContentDescription(enabled ? "Sembunyikan lirik" : "Tampilkan lirik");
+        showPanel(0);
+    }
+
+    void updateLyrics(CharSequence title, CharSequence artist, long duration, PlaybackState state) {
+        if (lyrics != null) lyrics.updateTrack(title, artist, duration, state);
     }
 
     private void openCalendar() {
@@ -471,7 +583,7 @@ public final class FloatingPetService extends Service {
 
     private void showReminder(String title) {
         if (title == null || bubble == null) return;
-        quickOpen = false;
+        if (quickOpen || quickClosing) closeQuickMenu(false);
         main.removeCallbacks(expireAlert);
         reminderShowing = true;
         updateTuckedState();
@@ -498,34 +610,52 @@ public final class FloatingPetService extends Service {
         if (shuffle == null || repeat == null) return;
         setPlaybackEnabled(shuffle, shuffleAvailable);
         setPlaybackEnabled(repeat, repeatAvailable);
-        shuffle.setText(shuffleMode > 0 ? "Acak ✓" : "Acak");
-        repeat.setText(repeatMode == 1 ? "Ulang 1" : repeatMode > 1 ? "Ulang ✓" : "Ulang");
+        shuffle.setImageTintList(ColorStateList.valueOf(shuffleMode > 0 ? 0xff9be6bd : 0xffffe5c7));
+        repeat.setImageTintList(ColorStateList.valueOf(repeatMode > 0 ? 0xff9be6bd : 0xffffe5c7));
+        repeat.setImageResource(repeatMode == 1 ? R.drawable.ic_andi_repeat_one : R.drawable.ic_andi_repeat);
+        shuffle.setContentDescription(shuffleMode > 0 ? "Acak lagu aktif" : "Acak lagu");
+        repeat.setContentDescription(repeatMode == 1 ? "Ulangi satu lagu" : repeatMode > 1 ? "Ulangi semua lagu" : "Ulangi lagu");
     }
 
     private int dp(int value) {
         return Math.round(value * overlayContext.getResources().getDisplayMetrics().density);
     }
 
-    private Button newMusicButton(String icon, String label) {
-        Button button = new Button(overlayContext, null, android.R.attr.borderlessButtonStyle);
-        button.setText(icon);
-        button.setTextSize(16);
-        button.setTextColor(0xffffe5c7);
+    private Drawable circleRipple(int fill, int stroke) {
+        GradientDrawable circle = new GradientDrawable();
+        circle.setShape(GradientDrawable.OVAL);
+        circle.setColor(fill);
+        if (stroke != 0) circle.setStroke(dp(1), stroke);
+        GradientDrawable mask = new GradientDrawable();
+        mask.setShape(GradientDrawable.OVAL);
+        mask.setColor(Color.WHITE);
+        return new RippleDrawable(ColorStateList.valueOf(0x448da2cc), circle, mask);
+    }
+
+    private ImageButton newIcon(int icon, String label, boolean primary) {
+        ImageButton button = new ImageButton(overlayContext);
+        button.setImageResource(icon);
+        button.setImageTintList(ColorStateList.valueOf(primary ? 0xff10192b : 0xffffe5c7));
+        button.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        button.setPadding(dp(5), dp(5), dp(5), dp(5));
         button.setContentDescription(label);
-        button.setPadding(0, 0, 0, 0);
-        button.setMinimumWidth(0);
-        button.setMinWidth(0);
+        button.setTooltipText(label);
+        button.setBackground(circleRipple(primary ? 0xffffe5c7 : Color.TRANSPARENT, 0));
         return button;
     }
 
-    private Button addPlaybackButton(LinearLayout row, String icon, String label, long action) {
-        Button button = newMusicButton(icon, label);
-        button.setOnClickListener(view -> PhoneEvents.control(action));
-        row.addView(button, new LinearLayout.LayoutParams(0, dp(38), 1));
+    private ImageButton addMusicIcon(LinearLayout row, int icon, String label, boolean primary, Runnable action) {
+        ImageButton button = newIcon(icon, label, primary);
+        if (primary) {
+            LinearLayout.LayoutParams center = new LinearLayout.LayoutParams(dp(42), dp(42));
+            center.setMargins(dp(2), dp(3), dp(2), dp(3));
+            row.addView(button, center);
+        } else row.addView(button, new LinearLayout.LayoutParams(0, dp(42), 1));
+        button.setOnClickListener(view -> action.run());
         return button;
     }
 
-    private void setPlaybackEnabled(Button button, boolean enabled) {
+    private void setPlaybackEnabled(View button, boolean enabled) {
         button.setEnabled(enabled);
         button.setAlpha(enabled ? 1f : 0.4f);
     }
@@ -568,6 +698,11 @@ public final class FloatingPetService extends Service {
         tucked = next;
         params.alpha = tucked ? 0f : 1f;
         if (tucked) {
+            if (quickClosing) {
+                quickPanel.animate().cancel();
+                quickClosing = false;
+                resetQuickAnimation();
+            }
             petTouch.cancelHold();
             petTouch.cancelTap();
             params.flags |= WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
@@ -674,7 +809,8 @@ public final class FloatingPetService extends Service {
         hasMusic = title != null;
         disc.setArtwork(art);
         disc.setPlaying(playing);
-        playPause.setText(playing ? "Ⅱ" : "▶");
+        playPause.setImageResource(playing ? R.drawable.ic_andi_pause : R.drawable.ic_andi_play);
+        if (title == null) updateLyrics(null, null, 0, null);
         playPause.setContentDescription(playing ? "Jeda" : "Putar");
         long toggle = playing ? PlaybackState.ACTION_PAUSE : PlaybackState.ACTION_PLAY;
         setPlaybackEnabled(previousTrack, (actions & PlaybackState.ACTION_SKIP_TO_PREVIOUS) != 0);
@@ -689,15 +825,19 @@ public final class FloatingPetService extends Service {
     }
 
     private void showPanel(int direction) {
-        boolean showQuick = !alertActive && quickOpen && !temporaryReminder;
+        boolean showQuick = showingQuickMenu();
         boolean showMusic = !alertActive && !showQuick && !temporaryReminder && hasMusic && !musicHidden;
         quickPanel.setVisibility(showQuick ? View.VISIBLE : View.GONE);
+        if (bubble.getBackground() != (showQuick ? null : cardBackground)) {
+            bubble.setBackground(showQuick ? null : cardBackground);
+        }
+        lyrics.setCardVisible(showMusic && !tucked);
         alertPanel.setVisibility(alertActive ? View.VISIBLE : View.GONE);
         musicPanel.setVisibility(showMusic ? View.VISIBLE : View.GONE);
         updateBubble();
-        if (direction == 0) return;
-        View active = alertActive ? alertPanel : showQuick ? quickPanel : showMusic ? musicPanel : null;
-        for (View panel : new View[]{alertPanel, musicPanel, quickPanel}) {
+        if (direction == 0 || showQuick) return;
+        View active = alertActive ? alertPanel : showMusic ? musicPanel : null;
+        for (View panel : new View[]{alertPanel, musicPanel}) {
             panel.animate().cancel();
             panel.setTranslationX(0);
             panel.setAlpha(1);
@@ -709,9 +849,13 @@ public final class FloatingPetService extends Service {
         }
     }
 
+    private boolean showingQuickMenu() {
+        return !alertActive && (quickOpen || quickClosing) && !temporaryReminder;
+    }
+
     private void updateBubble() {
         if (bubble == null) return;
-        boolean visible = !tucked && (alertActive || (!temporaryReminder && (quickOpen || (hasMusic && !musicHidden))));
+        boolean visible = !tucked && (alertActive || (!temporaryReminder && (showingQuickMenu() || (hasMusic && !musicHidden))));
         if (!visible) {
             bubble.setVisibility(View.GONE);
             return;
@@ -728,12 +872,10 @@ public final class FloatingPetService extends Service {
         bubbleOnRight = spaceRight >= spaceLeft;
         int available = Math.max(spaceLeft, spaceRight);
         boolean compact = alertActive && alertView.getVisibility() == View.GONE;
-        int preferredWidth = dp(compact ? 46 : quickOpen && !alertActive ? 234 : 246);
-        boolean beside = available >= dp(compact ? 40 : quickOpen && !alertActive ? 208 : 112);
-        if (!alertActive && !musicHidden) {
-            // Keep controls usable in the smallest supported side layout.
-            disc.setVisibility(beside && available < dp(148) ? View.GONE : View.VISIBLE);
-        }
+        boolean showQuick = showingQuickMenu();
+        int preferredWidth = dp(compact ? 46 : showQuick ? Math.min(shortcutCount, 3) * 48 + 16 : 246);
+        boolean beside = available >= (showQuick ? preferredWidth : dp(compact ? 40 : 200));
+        disc.setVisibility(View.VISIBLE);
         bubbleParams.width = Math.min(preferredWidth, beside ? available : Math.max(1, width - 2 * edge));
         bubble.measure(View.MeasureSpec.makeMeasureSpec(bubbleParams.width, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.AT_MOST));
@@ -845,6 +987,8 @@ public final class FloatingPetService extends Service {
     @Override
     public void onDestroy() {
         PhoneEvents.detach(this);
+        if (lyrics != null) lyrics.close();
+        if (quickPanel != null) quickPanel.animate().cancel();
         if (torchManager != null) torchManager.unregisterTorchCallback(torchStatus);
         NotificationPreferences.get(this).unregisterOnSharedPreferenceChangeListener(previewSettingsChanged);
         if (petTouch != null) petTouch.cancelHold();
@@ -919,7 +1063,7 @@ public final class FloatingPetService extends Service {
                 main.removeCallbacks(singleTap);
                 tapPending = false;
                 if (!temporaryReminder) {
-                    quickOpen = false;
+                    if (quickOpen || quickClosing) closeQuickMenu(false);
                     if (hasMusic) {
                         musicHidden = !musicHidden;
                         showPanel(musicHidden ? 0 : 1);

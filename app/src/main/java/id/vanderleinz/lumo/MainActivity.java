@@ -34,6 +34,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 public final class MainActivity extends Activity {
+    static final String ACTION_LYRICS = "id.vanderleinz.andi.LYRICS";
     static final String ACTION_CALENDAR = "id.vanderleinz.andi.CALENDAR";
     private static final int NAVY = 0xff10192b;
     private static final int WHITE = 0xffedf3ff;
@@ -42,6 +43,8 @@ public final class MainActivity extends Activity {
     private Button toggle;
     private TextView status;
     private Button focus;
+    private Button quickAccess;
+    private Button phoneAccess;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final Runnable tickFocus = this::renderFocus;
 
@@ -96,16 +99,10 @@ public final class MainActivity extends Activity {
         toggle.setOnClickListener(view -> toggleOverlay());
         add(panel, toggle, dp(54), 14);
 
-        Button phoneAccess = new Button(this);
+        phoneAccess = new Button(this);
         phoneAccess.setAllCaps(false);
         phoneAccess.setText("Akses notifikasi dan musik");
-        phoneAccess.setOnClickListener(view -> {
-            try {
-                startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
-            } catch (android.content.ActivityNotFoundException exception) {
-                Toast.makeText(this, "Cari Akses notifikasi di Setelan Android.", Toast.LENGTH_LONG).show();
-            }
-        });
+        phoneAccess.setOnClickListener(view -> explainAccess(false));
         add(panel, phoneAccess, dp(54), 8);
         add(panel, label("Opsional. Bubble bisa menampilkan pratinjau pesan saat HP terbuka.", 13, MUTED), -2, 6);
 
@@ -144,10 +141,16 @@ public final class MainActivity extends Activity {
         calendar.setOnClickListener(view -> showCalendar());
         add(panel, calendar, dp(48), 8);
 
-        Button quickAccess = new Button(this);
+        Button shortcuts = new Button(this);
+        shortcuts.setAllCaps(false);
+        shortcuts.setText("Pilih pintasan menu");
+        shortcuts.setOnClickListener(view -> chooseShortcuts(notificationSettings));
+        add(panel, shortcuts, dp(48), 8);
+
+        quickAccess = new Button(this);
         quickAccess.setAllCaps(false);
         quickAccess.setText("Akses daya, kunci, dan screenshot");
-        quickAccess.setOnClickListener(view -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
+        quickAccess.setOnClickListener(view -> explainAccess(true));
         add(panel, quickAccess, dp(48), 8);
 
         TextView hint = label("Ketuk untuk menu cepat • Ketuk dua kali untuk musik\nTahan tiga detik untuk menyembunyikan Andi", 14, MUTED);
@@ -182,20 +185,30 @@ public final class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         renderState();
-        openRequestedCalendar();
+        openRequestedPanel();
     }
 
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        openRequestedCalendar();
+        openRequestedPanel();
     }
 
-    private void openRequestedCalendar() {
-        if (!ACTION_CALENDAR.equals(getIntent().getAction())) return;
-        getIntent().setAction(null);
-        showCalendar();
+    private void openRequestedPanel() {
+        String action = getIntent().getAction();
+        if (ACTION_CALENDAR.equals(action)) {
+            getIntent().setAction(null);
+            showCalendar();
+        } else if (ACTION_LYRICS.equals(action)) {
+            getIntent().setAction(null);
+            new AlertDialog.Builder(this).setTitle("Tampilkan lirik")
+                    .setMessage("Untuk mencari lirik, Andi mengirim judul dan nama artis lagu aktif ke LRCLIB selama panel lirik ditampilkan.")
+                    .setNegativeButton("Nanti", null)
+                    .setPositiveButton("Tampilkan", (dialog, which) ->
+                            NotificationPreferences.get(this).edit().putBoolean(NotificationPreferences.LYRICS_CONSENT, true).apply())
+                    .show();
+        }
     }
 
     private void showCalendar() {
@@ -292,6 +305,49 @@ public final class MainActivity extends Activity {
         ui.removeCallbacks(tickFocus);
         unregisterReceiver(stateReceiver);
         super.onStop();
+    }
+
+    private void chooseShortcuts(SharedPreferences settings) {
+        int selected = settings.getInt(NotificationPreferences.SHORTCUTS, NotificationPreferences.ALL_SHORTCUTS);
+        boolean[] checked = new boolean[NotificationPreferences.SHORTCUT_LABELS.length];
+        for (int i = 0; i < checked.length; i++) checked[i] = (selected & (1 << i)) != 0;
+        new AlertDialog.Builder(this).setTitle("Pintasan menu Andi")
+                .setMultiChoiceItems(NotificationPreferences.SHORTCUT_LABELS, checked,
+                        (dialog, index, enabled) -> checked[index] = enabled)
+                .setNegativeButton("Batal", null)
+                .setPositiveButton("Simpan", (dialog, which) -> {
+                    int enabled = 0;
+                    for (int i = 0; i < checked.length; i++) if (checked[i]) enabled |= 1 << i;
+                    settings.edit().putInt(NotificationPreferences.SHORTCUTS, enabled).apply();
+                }).show();
+    }
+
+    private void explainAccess(boolean systemActions) {
+        String action = systemActions ? Settings.ACTION_ACCESSIBILITY_SETTINGS :
+                Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS;
+        String permission = systemActions ? "Aksi sistem" : "Akses notifikasi dan musik";
+        String explanation = systemActions
+                ? "Aktifkan Andi · Tombol cepat agar tombol Daya, Kunci, dan Screenshot bisa menjalankan aksi sistem."
+                : "Pilih Andi di setelan Akses notifikasi agar kartu notifikasi dan musik dapat ditampilkan.";
+        AlertDialog.Builder guide = new AlertDialog.Builder(this).setTitle(permission)
+                .setMessage(explanation + (Build.VERSION.SDK_INT >= 33
+                        ? "\n\nJika Android menampilkan Restricted setting, buka Info aplikasi Andi, ketuk menu ⋮, lalu pilih Allow restricted settings. Setelah itu kembali ke pengaturan ini."
+                        : ""))
+                .setNegativeButton("Nanti", null)
+                .setPositiveButton("Buka setelan", (dialog, which) -> openSetting(new Intent(action)));
+        if (Build.VERSION.SDK_INT >= 33) {
+            guide.setNeutralButton("Info aplikasi", (dialog, which) -> openSetting(
+                    new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))));
+        }
+        guide.show();
+    }
+
+    private void openSetting(Intent intent) {
+        try {
+            startActivity(intent);
+        } catch (android.content.ActivityNotFoundException error) {
+            Toast.makeText(this, "Pengaturan ini bisa dibuka dari Setelan Android.", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void chooseNotificationApp(SharedPreferences settings) {
@@ -396,6 +452,12 @@ public final class MainActivity extends Activity {
 
     private void renderState() {
         renderFocus();
+        quickAccess.setText(QuickActionsService.isConnected() ? "Aksi sistem aktif" : "Akses daya, kunci, dan screenshot");
+        android.app.NotificationManager notifications = getSystemService(android.app.NotificationManager.class);
+        boolean access = Build.VERSION.SDK_INT >= 27
+                ? notifications.isNotificationListenerAccessGranted(new android.content.ComponentName(this, PhoneEvents.class))
+                : PhoneEvents.isConnected();
+        phoneAccess.setText(access ? "Akses notifikasi dan musik aktif" : "Akses notifikasi dan musik");
         boolean showing = FloatingPetService.isShowing();
         boolean allowed = Settings.canDrawOverlays(this);
         status.setText(showing ? "Andi sedang melayang" :

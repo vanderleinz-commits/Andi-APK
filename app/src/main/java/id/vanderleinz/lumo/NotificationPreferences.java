@@ -4,6 +4,10 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 final class NotificationPreferences {
+    static final String SHORTCUTS = "quick_shortcuts";
+    static final String LYRICS_CONSENT = "lyrics_consent";
+    static final String[] SHORTCUT_LABELS = {"Kalender", "Home", "Senter", "Daya", "Kunci", "Screenshot"};
+    static final int ALL_SHORTCUTS = (1 << SHORTCUT_LABELS.length) - 1;
     static final String AUTO_TUCK = "auto_tuck";
     static final String QUIET = "quiet";
     static final String APP_PREFIX = "preview.";

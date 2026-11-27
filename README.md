@@ -1,4 +1,4 @@
-# Andi Android · trial 0.3.0
+# Andi Android · trial 0.4.1
 
 Push proyek ke repo GitHub dengan GitHub Actions aktif untuk membangun APK di server GitHub. Workflow **Build Andi debug APK** berjalan saat push ke `main` dan dapat dijalankan manual dari tab **Actions**. Setelah build sukses, unduh artefak **Andi-debug**, ekstrak, lalu buka `Andi-debug.apk` di HP.
 
@@ -34,3 +34,9 @@ Ketuk Andi sekali untuk membuka atau menutup menu cepat. Ketuk dua kali untuk me
 Buka **Kalender cepat**, pilih tanggal serta jam, lalu isi nama acara. Android dapat meminta izin **Alarm & pengingat** dan izin notifikasi. Saat pengingat berbunyi, Andi mencoba muncul selama 10 detik meskipun sebelumnya tersembunyi. Notifikasi sistem menjadi cadangan ketika layar terkunci atau sistem membatasi overlay. Pengingat yang belum berbunyi dijadwalkan lagi setelah reboot.
 
 Tombol **Daya** membuka menu daya Android. **Kunci** dan **Screenshot** memerlukan Android 9 atau lebih baru. Aktifkan **Andi · Tombol cepat** melalui menu aksesibilitas untuk memakai ketiga aksi tersebut. Layanan tombol cepat tidak membaca isi layar. Home dan senter tersedia langsung jika didukung perangkat.
+
+## Pintasan dan lirik
+
+Buka **Pilih pintasan menu** untuk memilih ikon yang muncul saat Andi diketuk. Di kartu musik, ketuk ikon lirik untuk memunculkan panel di bawah judul, artis, dan CD. Setelah izin pencarian disetujui, Andi mencari lirik lagu aktif di LRCLIB menggunakan judul dan artis selama panel ditampilkan. Lirik mengikuti posisi lagu jika data waktu tersedia.
+
+Jika muncul **Restricted setting**, buka **Info aplikasi Andi**, pilih **Allow restricted settings**, lalu aktifkan akses yang diminta melalui Setelan Android. Setelah Aksesibilitas **Andi · Tombol cepat** aktif, tombol Daya, Kunci, dan Screenshot memanggil aksi sistem. Daya tetap meminta pilihan pada menu daya.
