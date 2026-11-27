@@ -498,7 +498,6 @@ public final class FloatingPetService extends Service {
         quickOpen = true;
         showPanel(0);
         if (showingQuickMenu() && !tucked && motionEnabled()) {
-            pet.setOrbitOpen(true, true);
             animateShortcuts(true);
         }
     }
@@ -508,7 +507,6 @@ public final class FloatingPetService extends Service {
         quickClosing = animate && !alertActive && !tucked && motionEnabled()
                 && shortcuts.stream().anyMatch(shortcut -> shortcut.attached);
         if (quickClosing) {
-            pet.setOrbitOpen(false, true);
             animateShortcuts(false);
         } else {
             showPanel(0);
@@ -1006,7 +1004,6 @@ public final class FloatingPetService extends Service {
         boolean showQuick = showingQuickMenu();
         boolean showMusic = !alertActive && !showQuick && !temporaryReminder && hasMusic && !musicHidden;
         if (quickClosing && !showQuick) quickClosing = false;
-        pet.setOrbitOpen(showQuick && quickOpen && !tucked, false);
         lyrics.setCardVisible(showMusic && !tucked);
         alertPanel.setVisibility(alertActive ? View.VISIBLE : View.GONE);
         musicPanel.setVisibility(showMusic ? View.VISIBLE : View.GONE);

@@ -2,7 +2,6 @@ package id.vanderleinz.lumo;
 
 import android.content.Context;
 import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
@@ -29,9 +28,6 @@ final class PetView extends View {
     private boolean dragging;
     private boolean glasses = true;
     private boolean floating;
-    private boolean orbitOpen;
-    private long pulseAt = -1;
-    private boolean animatePulse;
     private int reaction;
 
     PetView(Context context) {
@@ -67,15 +63,6 @@ final class PetView extends View {
         invalidate();
     }
 
-    void setOrbitOpen(boolean open, boolean pulse) {
-        orbitOpen = open;
-        if (pulse) {
-            pulseAt = SystemClock.uptimeMillis();
-            animatePulse = true;
-        }
-        invalidate();
-    }
-
     void react() {
         lastTouch = SystemClock.uptimeMillis();
         reaction = (reaction + 1) % 3;
@@ -102,8 +89,9 @@ final class PetView extends View {
         canvas.save();
         canvas.translate((getWidth() - 120 * scale) / 2, (getHeight() - 120 * scale) / 2);
         canvas.scale(scale, scale);
-        if (floating) drawLauncher(canvas, now);
-        else {
+        if (floating) {
+            canvas.scale(.79f, .79f, 60, 59);
+        } else {
             fill(0x380a1027);
             canvas.drawOval(33, 97, 87, 103, paint);
         }
@@ -142,31 +130,8 @@ final class PetView extends View {
         canvas.restore();
 
         if (isShown() && getWindowVisibility() == VISIBLE) {
-            postInvalidateDelayed(animatePulse ? 16 : (asleep ? 100 : 40));
+            postInvalidateDelayed(asleep ? 100 : 40);
         }
-    }
-
-    private void drawLauncher(Canvas canvas, long now) {
-        fill(orbitOpen ? 0xff285a56 : 0xff20364e);
-        canvas.drawCircle(60, 58, 48, paint);
-        stroke(0xffa4eedc, 2f);
-        canvas.drawCircle(60, 58, 46, paint);
-        if (orbitOpen) {
-            stroke(0x9877e3cf, 1f);
-            canvas.drawCircle(60, 58, 52, paint);
-            stroke(0x6677e3cf, 1f);
-            canvas.drawCircle(60, 58, 57, paint);
-        }
-        if (animatePulse) {
-            for (int ring = 0; ring < 3; ring++) {
-                float progress = (now - pulseAt - ring * 74) / 430f;
-                if (progress < 0 || progress >= 1) continue;
-                stroke((Math.round(225 * (1 - progress)) << 24) | 0x009cf5df, 1.4f);
-                canvas.drawCircle(60, 58, 42 + 16 * progress, paint);
-            }
-            animatePulse = now - pulseAt < 578;
-        }
-        canvas.scale(.79f, .79f, 60, 59);
     }
 
     private void drawGlasses(Canvas canvas) {
