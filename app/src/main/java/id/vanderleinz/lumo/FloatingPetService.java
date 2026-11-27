@@ -584,23 +584,55 @@ public final class FloatingPetService extends Service {
     private void layoutShortcuts(int width, int height) {
         float anchorX = params.x + params.width / 2f;
         float anchorY = params.y + params.height / 2f;
-        int size = dp(44);
-        float edge = size / 2f + dp(4);
-        float radius = Math.max(1, Math.min(dp(112), Math.min(width, height) / 2f - edge));
-        float centerY = Math.min(height - edge - radius, Math.max(edge + radius, anchorY));
         int side = anchorX <= width / 2f ? 1 : -1;
-        for (int i = 0; i < shortcuts.size(); i++) {
-            Shortcut shortcut = shortcuts.get(i);
-            double angle = Math.toRadians(shortcuts.size() == 1 ? 0 : -76 + i * 152.0 / (shortcuts.size() - 1));
-            float y = centerY + radius * (float) Math.sin(angle);
-            float dy = y - anchorY;
-            float clearance = dp(71);
-            float distance = Math.max(radius * (float) Math.cos(angle),
-                    (float) Math.sqrt(Math.max(0, clearance * clearance - dy * dy)));
-            shortcut.targetX = clamp(Math.round(anchorX + side * distance - size / 2f), width - size);
-            shortcut.targetY = clamp(Math.round(y - size / 2f), height - size);
+        int size = dp(44);
+        if (!fitShortcutArc(width, height, anchorX, anchorY, side, size)) {
+            // A very short or narrow display can need a compact stack.
+            int gap = dp(3);
+            int step = size + gap;
+            float available = side == 1 ? width - anchorX : anchorX;
+            int columns = available >= params.width / 2f + 2 * step ? 2 : 1;
+            int rows = (shortcuts.size() + columns - 1) / columns;
+            int top = clamp(Math.round(anchorY - (rows * step - gap) / 2f), height - rows * step + gap);
+            for (int i = 0; i < shortcuts.size(); i++) {
+                Shortcut shortcut = shortcuts.get(i);
+                float offset = params.width / 2f + gap + size / 2f + (i % columns) * step;
+                shortcut.targetX = clamp(Math.round(anchorX + side * offset - size / 2f), width - size);
+                shortcut.targetY = clamp(top + (i / columns) * step, height - size);
+            }
         }
         if (orbitAnimation == null) settleShortcuts();
+    }
+
+    private boolean fitShortcutArc(int width, int height, float anchorX, float anchorY, int side, int size) {
+        int count = shortcuts.size();
+        float edge = size / 2f + dp(1);
+        for (int distance : new int[]{112, 105, 119, 96, 127}) {
+            float radius = dp(distance);
+            double angleGap = Math.ceil(Math.toDegrees(2 * Math.asin(Math.min(1, (size + dp(1)) / (2 * radius)))));
+            int minimum = Math.min(152, (int) angleGap * (count - 1));
+            for (int spread = count == 1 ? 0 : 152; ; spread = Math.max(minimum, spread - 9)) {
+                for (int turn = 0; turn <= 120; turn++) {
+                    int shift = ((turn + 1) / 2) * 3 * (turn % 2 == 1 ? 1 : -1);
+                    boolean fits = true;
+                    for (int i = 0; i < count; i++) {
+                        double angle = Math.toRadians(count == 1 ? shift : shift - spread / 2.0 + i * spread / (count - 1.0));
+                        float x = anchorX + side * radius * (float) Math.cos(angle);
+                        float y = anchorY + radius * (float) Math.sin(angle);
+                        if (x < edge || x > width - edge || y < edge || y > height - edge) {
+                            fits = false;
+                            break;
+                        }
+                        Shortcut shortcut = shortcuts.get(i);
+                        shortcut.targetX = Math.round(x - size / 2f);
+                        shortcut.targetY = Math.round(y - size / 2f);
+                    }
+                    if (fits) return true;
+                }
+                if (spread == minimum) break;
+            }
+        }
+        return false;
     }
 
     private void settleShortcuts() {
