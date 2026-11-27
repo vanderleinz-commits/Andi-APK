@@ -124,6 +124,10 @@ public final class MainActivity extends Activity {
         SharedPreferences settings = NotificationPreferences.get(this);
         add(panel, action("Izin & panduan instalasi", COCOA, this::showPermissions), -2, 6);
         add(panel, action("Pilih pintasan menu", CREAM, () -> chooseShortcuts(settings)), -2, 7);
+        Button characters = action("", CREAM, () -> {});
+        renderCharacter(characters, preview, NotificationPreferences.character(settings));
+        characters.setOnClickListener(view -> chooseCharacter(settings, characters, preview));
+        add(panel, characters, -2, 7);
         Switch glasses = setting("Kacamata Andi", settings, NotificationPreferences.GLASSES, true);
         preview.setGlasses(glasses.isChecked());
         glasses.setOnCheckedChangeListener((button, checked) -> {
@@ -310,6 +314,75 @@ public final class MainActivity extends Activity {
     protected void onDestroy() {
         if (permissionDialog != null) permissionDialog.dismiss();
         super.onDestroy();
+    }
+
+    private void chooseCharacter(SharedPreferences settings, Button picker, PetView preview) {
+        PetStyle selected = NotificationPreferences.character(settings);
+        boolean glasses = settings.getBoolean(NotificationPreferences.GLASSES, true);
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout catalog = new LinearLayout(this);
+        catalog.setOrientation(LinearLayout.VERTICAL);
+        catalog.setPadding(dp(14), dp(8), dp(14), dp(12));
+        scroll.addView(catalog);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Pilih karakter Andi")
+                .setView(scroll)
+                .setNegativeButton("Tutup", null)
+                .create();
+        PetStyle[] styles = PetStyle.values();
+        LinearLayout row = null;
+        for (int i = 0; i < styles.length; i++) {
+            if (i % 2 == 0) {
+                row = new LinearLayout(this);
+                add(catalog, row, -2, i == 0 ? 0 : 8);
+            }
+            PetStyle style = styles[i];
+            boolean active = style == selected;
+            LinearLayout tile = new LinearLayout(this);
+            tile.setOrientation(LinearLayout.VERTICAL);
+            tile.setGravity(Gravity.CENTER_HORIZONTAL);
+            tile.setPadding(dp(7), dp(4), dp(10), dp(10));
+            tile.setBackground(new android.graphics.drawable.RippleDrawable(
+                    android.content.res.ColorStateList.valueOf(0x25142139), surface(active ? MINT : CREAM, 8), null));
+            tile.setFocusable(true);
+            tile.setContentDescription(style.label + (active ? ", sedang dipakai" : ""));
+            tile.setAccessibilityDelegate(new android.view.View.AccessibilityDelegate() {
+                @Override
+                public void onInitializeAccessibilityNodeInfo(android.view.View host,
+                        android.view.accessibility.AccessibilityNodeInfo info) {
+                    super.onInitializeAccessibilityNodeInfo(host, info);
+                    info.setClassName(Button.class.getName());
+                    info.setSelected(active);
+                }
+            });
+
+            PetView thumbnail = new PetView(this);
+            thumbnail.setStaticPreview();
+            thumbnail.setGlasses(glasses);
+            thumbnail.setCharacter(style);
+            thumbnail.setImportantForAccessibility(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            tile.addView(thumbnail, new LinearLayout.LayoutParams(-1, dp(83)));
+            TextView name = label(style.label, 14, NAVY);
+            name.setGravity(Gravity.CENTER);
+            name.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+            name.setImportantForAccessibility(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            tile.addView(name, new LinearLayout.LayoutParams(-1, -2));
+            LinearLayout.LayoutParams cell = new LinearLayout.LayoutParams(0, -1, 1f);
+            if (i % 2 == 1) cell.setMarginStart(dp(8));
+            row.addView(tile, cell);
+            tile.setOnClickListener(view -> {
+                settings.edit().putString(NotificationPreferences.CHARACTER, style.id).apply();
+                renderCharacter(picker, preview, style);
+                dialog.dismiss();
+            });
+        }
+        dialog.show();
+    }
+
+    private void renderCharacter(Button picker, PetView preview, PetStyle style) {
+        picker.setText("Karakter Andi · " + style.label);
+        preview.setCharacter(style);
+        preview.setContentDescription(style.label + ". Ketuk untuk melihat ekspresinya.");
     }
 
     private void chooseShortcuts(SharedPreferences settings) {

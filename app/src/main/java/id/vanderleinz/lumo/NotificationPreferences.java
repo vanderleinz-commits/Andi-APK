@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 
 final class NotificationPreferences {
     static final String GLASSES = "andi_glasses";
+    static final String CHARACTER = "andi_character";
     static final String BUBBLE_MOTION = "bubble_motion";
     static final String SHORTCUTS = "quick_shortcuts";
     static final String LYRICS_CONSENT = "lyrics_consent";
@@ -23,6 +24,10 @@ final class NotificationPreferences {
 
     static SharedPreferences get(Context context) {
         return context.getSharedPreferences("notification_preferences", Context.MODE_PRIVATE);
+    }
+
+    static PetStyle character(SharedPreferences preferences) {
+        return PetStyle.fromId(preferences.getString(CHARACTER, PetStyle.CLASSIC.id));
     }
 
     static int appPreview(SharedPreferences preferences, String packageName) {

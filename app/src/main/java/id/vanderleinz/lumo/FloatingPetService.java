@@ -161,6 +161,9 @@ public final class FloatingPetService extends Service {
                 if (pet != null && (key == null || NotificationPreferences.GLASSES.equals(key))) {
                     pet.setGlasses(settings.getBoolean(NotificationPreferences.GLASSES, true));
                 }
+                if (pet != null && (key == null || NotificationPreferences.CHARACTER.equals(key))) {
+                    pet.setCharacter(NotificationPreferences.character(settings));
+                }
                 if (pet != null && NotificationPreferences.SHORTCUTS.equals(key)) {
                     closeQuickMenu(false);
                     rebuildShortcuts();
@@ -307,7 +310,9 @@ public final class FloatingPetService extends Service {
 
         PetView companion = new PetView(overlayContext);
         companion.setFloating();
-        companion.setGlasses(NotificationPreferences.get(this).getBoolean(NotificationPreferences.GLASSES, true));
+        SharedPreferences appearance = NotificationPreferences.get(this);
+        companion.setCharacter(NotificationPreferences.character(appearance));
+        companion.setGlasses(appearance.getBoolean(NotificationPreferences.GLASSES, true));
         companion.setContentDescription("Andi. Ketuk untuk menu cepat. Ketuk dua kali untuk musik. Tahan tiga detik untuk menyembunyikan Andi.");
         companion.setOnClickListener(view -> {
             companion.react();
