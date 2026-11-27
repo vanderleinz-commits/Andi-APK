@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Andi</string>
-    <style name="AppTheme" parent="android:style/Theme.Material.NoActionBar">
+    <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
-        <item name="android:windowBackground">#10192B</item>
-        <item name="android:statusBarColor">#10192B</item>
-        <item name="android:navigationBarColor">#10192B</item>
-        <item name="android:colorAccent">#E3BAA0</item>
-        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowBackground">#F3ECDE</item>
+        <item name="android:statusBarColor">#F3ECDE</item>
+        <item name="android:navigationBarColor">#F3ECDE</item>
+        <item name="android:colorAccent">#256D5E</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
     </style>
     <string name="quick_actions_description">Menjalankan tombol daya, kunci, dan screenshot saat diketuk di menu Andi. Tidak membaca isi layar.</string>
 </resources>

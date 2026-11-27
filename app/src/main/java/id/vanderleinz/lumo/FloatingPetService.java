@@ -46,6 +46,8 @@ import android.graphics.drawable.RippleDrawable;
 import android.util.Log;
 import android.app.KeyguardManager;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -63,6 +65,10 @@ public final class FloatingPetService extends Service {
     private static final int NOTIFICATION_ID = 10;
     private static final int FOCUS_DONE_ID = 11;
     private static final String FOCUS_CHANNEL = "focus_andi";
+    private static final int INK = 0xff142139;
+    private static final int CREAM = 0xfffff6e6;
+    private static final int COCOA = 0xffedaf83;
+    private static final int ACTIVE_CONTROL = 0xff236b55;
     private static boolean showing;
 
     private Context overlayContext;
@@ -78,11 +84,27 @@ public final class FloatingPetService extends Service {
     private TextView artistView;
     private PetTouch petTouch;
     private LinearLayout musicPanel;
-    private LinearLayout quickPanel;
+    private final List<Shortcut> shortcuts = new ArrayList<>();
     private boolean quickOpen;
     private boolean quickClosing;
-    private int shortcutCount;
-    private GradientDrawable cardBackground;
+    private android.animation.ValueAnimator orbitAnimation;
+
+    private static final class Shortcut {
+        final ImageButton button;
+        final WindowManager.LayoutParams layout;
+        boolean attached;
+        int targetX;
+        int targetY;
+        int startX;
+        int startY;
+        float startScale;
+        float startAlpha;
+
+        Shortcut(ImageButton button, WindowManager.LayoutParams layout) {
+            this.button = button;
+            this.layout = layout;
+        }
+    }
     private ImageButton lyricsButton;
     private LyricsPanel lyrics;
     private ImageButton shuffle;
@@ -136,10 +158,19 @@ public final class FloatingPetService extends Service {
             (settings, key) -> {
                 if (key == null || key.startsWith(NotificationPreferences.APP_PREFIX)) clearAlert();
                 if (NotificationPreferences.AUTO_TUCK.equals(key)) updateTuckedState();
-                if (NotificationPreferences.SHORTCUTS.equals(key) && quickPanel != null) {
+                if (pet != null && (key == null || NotificationPreferences.GLASSES.equals(key))) {
+                    pet.setGlasses(settings.getBoolean(NotificationPreferences.GLASSES, true));
+                }
+                if (pet != null && NotificationPreferences.SHORTCUTS.equals(key)) {
+                    closeQuickMenu(false);
                     rebuildShortcuts();
-                    if (shortcutCount == 0) closeQuickMenu(false);
-                    else showPanel(0);
+                }
+                if (pet != null && NotificationPreferences.BUBBLE_MOTION.equals(key) && !motionEnabled()) {
+                    if (quickClosing) closeQuickMenu(false);
+                    else {
+                        cancelOrbitAnimation();
+                        settleShortcuts();
+                    }
                 }
                 if (NotificationPreferences.LYRICS_CONSENT.equals(key) && lyrics != null) {
                     setLyricsEnabled(settings.getBoolean(NotificationPreferences.LYRICS_CONSENT, false));
@@ -275,6 +306,8 @@ public final class FloatingPetService extends Service {
         restorePosition();
 
         PetView companion = new PetView(overlayContext);
+        companion.setFloating();
+        companion.setGlasses(NotificationPreferences.get(this).getBoolean(NotificationPreferences.GLASSES, true));
         companion.setContentDescription("Andi. Ketuk untuk menu cepat. Ketuk dua kali untuk musik. Tahan tiga detik untuk menyembunyikan Andi.");
         companion.setOnClickListener(view -> {
             companion.react();
@@ -312,12 +345,19 @@ public final class FloatingPetService extends Service {
     private void createBubble() {
         bubble = new LinearLayout(overlayContext);
         bubble.setOrientation(LinearLayout.VERTICAL);
-        bubble.setPadding(dp(8), dp(2), dp(8), dp(2));
-        cardBackground = new GradientDrawable();
-        cardBackground.setCornerRadius(dp(16));
-        cardBackground.setColor(0xff202c45);
-        cardBackground.setStroke(dp(1), 0xffbc8969);
-        bubble.setBackground(cardBackground);
+        GradientDrawable cardBackground = new GradientDrawable();
+        cardBackground.setCornerRadius(dp(13));
+        cardBackground.setColor(CREAM);
+        cardBackground.setStroke(dp(2), INK);
+        GradientDrawable shadow = new GradientDrawable();
+        shadow.setCornerRadius(dp(13));
+        shadow.setColor(INK);
+        android.graphics.drawable.LayerDrawable card = new android.graphics.drawable.LayerDrawable(
+                new Drawable[]{shadow, cardBackground});
+        card.setLayerInset(0, dp(3), dp(3), 0, 0);
+        card.setLayerInset(1, 0, 0, dp(3), dp(3));
+        bubble.setBackground(card);
+        bubble.setPadding(dp(9), dp(4), dp(12), dp(7));
         alertPanel = new LinearLayout(overlayContext);
         alertPanel.setGravity(Gravity.CENTER_VERTICAL);
         alertPanel.setMinimumHeight(dp(42));
@@ -353,7 +393,7 @@ public final class FloatingPetService extends Service {
         musicDetails.addView(musicView);
         artistView = newBubbleText(1);
         artistView.setTextSize(11);
-        artistView.setTextColor(0xffd6b7a4);
+        artistView.setTextColor(0xff4c5e74);
         artistView.setPadding(0, 0, 0, 0);
         musicDetails.addView(artistView);
         lyricsButton = newIcon(R.drawable.ic_andi_lyrics, "Tampilkan lirik", false);
@@ -388,18 +428,13 @@ public final class FloatingPetService extends Service {
         lyricScroll.setVisibility(View.GONE);
         lyricScroll.setFillViewport(true);
         TextView lyricText = new TextView(overlayContext);
-        lyricText.setTextColor(0xffffe5c7);
+        lyricText.setTextColor(INK);
         lyricText.setTextSize(13);
         lyricText.setPadding(dp(6), dp(4), dp(6), dp(4));
         lyricScroll.addView(lyricText);
         musicPanel.addView(lyricScroll, new LinearLayout.LayoutParams(-1, dp(72)));
         lyrics = new LyricsPanel(main, lyricScroll, lyricText);
 
-        quickPanel = new LinearLayout(overlayContext);
-        quickPanel.setOrientation(LinearLayout.VERTICAL);
-        quickPanel.setGravity(Gravity.CENTER_HORIZONTAL);
-        quickPanel.setVisibility(View.GONE);
-        bubble.addView(quickPanel);
         rebuildShortcuts();
 
         bubbleParams = new WindowManager.LayoutParams(dp(246), WindowManager.LayoutParams.WRAP_CONTENT,
@@ -411,8 +446,8 @@ public final class FloatingPetService extends Service {
     }
 
     private void rebuildShortcuts() {
-        quickPanel.removeAllViews();
-        shortcutCount = 0;
+        hideShortcuts();
+        shortcuts.clear();
         int selected = NotificationPreferences.get(this).getInt(
                 NotificationPreferences.SHORTCUTS, NotificationPreferences.ALL_SHORTCUTS);
         int[] icons = {R.drawable.ic_andi_calendar, R.drawable.ic_andi_home, R.drawable.ic_andi_torch,
@@ -423,27 +458,30 @@ public final class FloatingPetService extends Service {
                 () -> runSystemAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_POWER_DIALOG),
                 () -> runSystemAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN),
                 () -> runSystemAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT)};
-        LinearLayout row = null;
+        int size = dp(44);
         for (int i = 0; i < icons.length; i++) {
             if ((selected & (1 << i)) == 0) continue;
-            if (shortcutCount % 3 == 0) {
-                row = new LinearLayout(overlayContext);
-                row.setGravity(Gravity.CENTER);
-                quickPanel.addView(row);
-            }
             String label = NotificationPreferences.SHORTCUT_LABELS[i];
             ImageButton button = newIcon(icons[i], label, false);
-            button.setBackground(circleRipple(0xff263754, 0xffbc8969));
-            LinearLayout.LayoutParams item = new LinearLayout.LayoutParams(dp(42), dp(42));
-            item.setMargins(dp(3), dp(3), dp(3), dp(3));
-            row.addView(button, item);
+            int color = shortcuts.size() % 2 == 0 ? 0xff91e4d1 : 0xffd6f4e4;
+            button.setBackground(circleRipple(color, INK));
             Runnable action = actions[i];
             button.setOnClickListener(view -> {
                 closeQuickMenu(false);
                 action.run();
             });
-            shortcutCount++;
+            WindowManager.LayoutParams layout = new WindowManager.LayoutParams(size, size,
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                    PixelFormat.TRANSLUCENT);
+            layout.gravity = Gravity.TOP | Gravity.LEFT;
+            shortcuts.add(new Shortcut(button, layout));
         }
+    }
+
+    private boolean motionEnabled() {
+        return android.animation.ValueAnimator.areAnimatorsEnabled()
+                && NotificationPreferences.get(this).getBoolean(NotificationPreferences.BUBBLE_MOTION, true);
     }
 
     private void toggleQuickMenu() {
@@ -451,52 +489,163 @@ public final class FloatingPetService extends Service {
             closeQuickMenu(true);
             return;
         }
-        if (shortcutCount == 0) {
+        if (shortcuts.isEmpty()) {
             Toast.makeText(this, "Pilih pintasan menu di aplikasi Andi.", Toast.LENGTH_SHORT).show();
             return;
         }
-        quickPanel.animate().cancel();
+        cancelOrbitAnimation();
         quickClosing = false;
         quickOpen = true;
         showPanel(0);
-        if (!alertActive && !tucked && android.animation.ValueAnimator.areAnimatorsEnabled()) {
-            quickPanel.setPivotX(bubbleOnRight ? 0 : quickPanel.getMeasuredWidth());
-            quickPanel.setPivotY(quickPanel.getMeasuredHeight() / 2f);
-            quickPanel.setScaleX(0.68f);
-            quickPanel.setScaleY(0.68f);
-            quickPanel.setAlpha(0f);
-            quickPanel.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(210)
-                    .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
-        } else resetQuickAnimation();
+        if (showingQuickMenu() && !tucked && motionEnabled()) {
+            pet.setOrbitOpen(true, true);
+            animateShortcuts(true);
+        }
     }
 
     private void closeQuickMenu(boolean animate) {
-        quickPanel.animate().cancel();
         quickOpen = false;
-        if (animate && !alertActive && !tucked && android.animation.ValueAnimator.areAnimatorsEnabled()) {
-            quickClosing = true;
-            quickPanel.animate().alpha(0f).scaleX(0.68f).scaleY(0.68f).setDuration(155)
-                    .withEndAction(() -> {
-                        quickClosing = false;
-                        resetQuickAnimation();
-                        showPanel(0);
-                    }).start();
+        quickClosing = animate && !alertActive && !tucked && motionEnabled()
+                && shortcuts.stream().anyMatch(shortcut -> shortcut.attached);
+        if (quickClosing) {
+            pet.setOrbitOpen(false, true);
+            animateShortcuts(false);
         } else {
-            quickClosing = false;
-            resetQuickAnimation();
             showPanel(0);
         }
     }
 
-    private void resetQuickAnimation() {
-        quickPanel.setAlpha(1f);
-        quickPanel.setScaleX(1f);
-        quickPanel.setScaleY(1f);
+    private void animateShortcuts(boolean opening) {
+        cancelOrbitAnimation();
+        List<Shortcut> shown = new ArrayList<>();
+        for (Shortcut shortcut : shortcuts) if (shortcut.attached) shown.add(shortcut);
+        if (shown.isEmpty()) return;
+        int anchorX = params.x + (params.width - dp(44)) / 2;
+        int anchorY = params.y + (params.height - dp(44)) / 2;
+        for (Shortcut shortcut : shown) {
+            shortcut.startX = opening ? anchorX : shortcut.layout.x;
+            shortcut.startY = opening ? anchorY : shortcut.layout.y;
+            shortcut.startScale = opening ? .25f : shortcut.button.getScaleX();
+            shortcut.startAlpha = opening ? 0f : shortcut.button.getAlpha();
+            shortcut.button.setEnabled(false);
+        }
+        int duration = opening ? 310 : 185;
+        int total = duration + (shown.size() - 1) * 28;
+        android.animation.TimeInterpolator ease = opening
+                ? new android.view.animation.OvershootInterpolator(.78f)
+                : new android.view.animation.AccelerateInterpolator();
+        android.animation.ValueAnimator animation = android.animation.ValueAnimator.ofFloat(0, total);
+        animation.setDuration(total);
+        animation.setInterpolator(new android.view.animation.LinearInterpolator());
+        animation.addUpdateListener(frame -> {
+            float elapsed = (float) frame.getAnimatedValue();
+            int endX = params.x + (params.width - dp(44)) / 2;
+            int endY = params.y + (params.height - dp(44)) / 2;
+            for (int i = 0; i < shown.size(); i++) {
+                Shortcut shortcut = shown.get(i);
+                float delay = (opening ? i : shown.size() - i - 1) * 28;
+                float progress = Math.max(0f, Math.min(1f, (elapsed - delay) / duration));
+                float travel = Math.min(1f, ease.getInterpolation(progress));
+                float scale = lerp(shortcut.startScale, opening ? 1f : .25f, ease.getInterpolation(progress));
+                shortcut.button.setScaleX(scale);
+                shortcut.button.setScaleY(scale);
+                shortcut.button.setAlpha(lerp(shortcut.startAlpha, opening ? 1f : 0f, travel));
+                int x = Math.round(lerp(shortcut.startX, opening ? shortcut.targetX : endX, travel));
+                int y = Math.round(lerp(shortcut.startY, opening ? shortcut.targetY : endY, travel));
+                placeShortcut(shortcut, x, y, false);
+            }
+        });
+        animation.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator finished) {
+                if (orbitAnimation != finished) return;
+                orbitAnimation = null;
+                if (opening) settleShortcuts();
+                else {
+                    quickClosing = false;
+                    showPanel(0);
+                }
+            }
+        });
+        orbitAnimation = animation;
+        animation.start();
+    }
+
+    private float lerp(float from, float to, float progress) {
+        return from + (to - from) * progress;
+    }
+
+    private void cancelOrbitAnimation() {
+        if (orbitAnimation == null) return;
+        android.animation.ValueAnimator previous = orbitAnimation;
+        orbitAnimation = null;
+        previous.cancel();
+    }
+
+    private void layoutShortcuts(int width, int height) {
+        float anchorX = params.x + params.width / 2f;
+        float anchorY = params.y + params.height / 2f;
+        int size = dp(44);
+        float edge = size / 2f + dp(4);
+        float radius = Math.max(1, Math.min(dp(112), Math.min(width, height) / 2f - edge));
+        float centerY = Math.min(height - edge - radius, Math.max(edge + radius, anchorY));
+        int side = anchorX <= width / 2f ? 1 : -1;
+        for (int i = 0; i < shortcuts.size(); i++) {
+            Shortcut shortcut = shortcuts.get(i);
+            double angle = Math.toRadians(shortcuts.size() == 1 ? 0 : -76 + i * 152.0 / (shortcuts.size() - 1));
+            float y = centerY + radius * (float) Math.sin(angle);
+            float dy = y - anchorY;
+            float clearance = dp(71);
+            float distance = Math.max(radius * (float) Math.cos(angle),
+                    (float) Math.sqrt(Math.max(0, clearance * clearance - dy * dy)));
+            shortcut.targetX = clamp(Math.round(anchorX + side * distance - size / 2f), width - size);
+            shortcut.targetY = clamp(Math.round(y - size / 2f), height - size);
+        }
+        if (orbitAnimation == null) settleShortcuts();
+    }
+
+    private void settleShortcuts() {
+        if (!showingQuickMenu() || tucked) return;
+        for (Shortcut shortcut : shortcuts) {
+            shortcut.button.setAlpha(1f);
+            shortcut.button.setScaleX(1f);
+            shortcut.button.setScaleY(1f);
+            shortcut.button.setEnabled(true);
+            placeShortcut(shortcut, shortcut.targetX, shortcut.targetY, true);
+        }
+    }
+
+    private void placeShortcut(Shortcut shortcut, int x, int y, boolean touchable) {
+        WindowManager.LayoutParams layout = shortcut.layout;
+        int flags = touchable ? layout.flags & ~WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                : layout.flags | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
+        if (shortcut.attached && x == layout.x && y == layout.y && flags == layout.flags) return;
+        layout.x = x;
+        layout.y = y;
+        layout.flags = flags;
+        try {
+            if (shortcut.attached) windows.updateViewLayout(shortcut.button, layout);
+            else {
+                windows.addView(shortcut.button, layout);
+                shortcut.attached = true;
+            }
+        } catch (WindowManager.BadTokenException | WindowManager.InvalidDisplayException
+                 | IllegalArgumentException | SecurityException error) {
+            Log.w("AndiOverlay", "Could not place the shortcut", error);
+        }
+    }
+
+    private void hideShortcuts() {
+        cancelOrbitAnimation();
+        for (Shortcut shortcut : shortcuts) {
+            if (!shortcut.attached) continue;
+            windows.removeViewImmediate(shortcut.button);
+            shortcut.attached = false;
+        }
     }
 
     private void setLyricsEnabled(boolean enabled) {
         lyrics.setEnabled(enabled);
-        lyricsButton.setImageTintList(ColorStateList.valueOf(enabled ? 0xff9be6bd : 0xffffe5c7));
+        lyricsButton.setImageTintList(ColorStateList.valueOf(enabled ? ACTIVE_CONTROL : INK));
         lyricsButton.setContentDescription(enabled ? "Sembunyikan lirik" : "Tampilkan lirik");
         showPanel(0);
     }
@@ -610,8 +759,8 @@ public final class FloatingPetService extends Service {
         if (shuffle == null || repeat == null) return;
         setPlaybackEnabled(shuffle, shuffleAvailable);
         setPlaybackEnabled(repeat, repeatAvailable);
-        shuffle.setImageTintList(ColorStateList.valueOf(shuffleMode > 0 ? 0xff9be6bd : 0xffffe5c7));
-        repeat.setImageTintList(ColorStateList.valueOf(repeatMode > 0 ? 0xff9be6bd : 0xffffe5c7));
+        shuffle.setImageTintList(ColorStateList.valueOf(shuffleMode > 0 ? ACTIVE_CONTROL : INK));
+        repeat.setImageTintList(ColorStateList.valueOf(repeatMode > 0 ? ACTIVE_CONTROL : INK));
         repeat.setImageResource(repeatMode == 1 ? R.drawable.ic_andi_repeat_one : R.drawable.ic_andi_repeat);
         shuffle.setContentDescription(shuffleMode > 0 ? "Acak lagu aktif" : "Acak lagu");
         repeat.setContentDescription(repeatMode == 1 ? "Ulangi satu lagu" : repeatMode > 1 ? "Ulangi semua lagu" : "Ulangi lagu");
@@ -635,12 +784,12 @@ public final class FloatingPetService extends Service {
     private ImageButton newIcon(int icon, String label, boolean primary) {
         ImageButton button = new ImageButton(overlayContext);
         button.setImageResource(icon);
-        button.setImageTintList(ColorStateList.valueOf(primary ? 0xff10192b : 0xffffe5c7));
+        button.setImageTintList(ColorStateList.valueOf(INK));
         button.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         button.setPadding(dp(5), dp(5), dp(5), dp(5));
         button.setContentDescription(label);
         button.setTooltipText(label);
-        button.setBackground(circleRipple(primary ? 0xffffe5c7 : Color.TRANSPARENT, 0));
+        button.setBackground(circleRipple(primary ? COCOA : Color.TRANSPARENT, primary ? INK : 0));
         return button;
     }
 
@@ -662,7 +811,7 @@ public final class FloatingPetService extends Service {
 
     private TextView newBubbleText(int lines) {
         TextView view = new TextView(overlayContext);
-        view.setTextColor(0xffffe5c7);
+        view.setTextColor(INK);
         view.setTextSize(14);
         view.setPadding(0, dp(7), 0, dp(7));
         view.setMaxLines(lines);
@@ -698,11 +847,7 @@ public final class FloatingPetService extends Service {
         tucked = next;
         params.alpha = tucked ? 0f : 1f;
         if (tucked) {
-            if (quickClosing) {
-                quickPanel.animate().cancel();
-                quickClosing = false;
-                resetQuickAnimation();
-            }
+            quickClosing = false;
             petTouch.cancelHold();
             petTouch.cancelTap();
             params.flags |= WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
@@ -771,6 +916,7 @@ public final class FloatingPetService extends Service {
         currentAlert = alert;
         alertView.setMaxLines(alert.destination == null && "Andi".equals(alert.source) ? 5 : 3);
         alertPanel.setClickable(alert.destination != null && alert.destination.isActivity());
+        alertIcon.setImageTintList(alert.icon == null ? ColorStateList.valueOf(INK) : null);
         if (alert.icon == null) alertIcon.setImageResource(R.drawable.ic_notification);
         else alertIcon.setImageDrawable(alert.icon);
         alertIcon.setContentDescription(alert.source);
@@ -827,15 +973,13 @@ public final class FloatingPetService extends Service {
     private void showPanel(int direction) {
         boolean showQuick = showingQuickMenu();
         boolean showMusic = !alertActive && !showQuick && !temporaryReminder && hasMusic && !musicHidden;
-        quickPanel.setVisibility(showQuick ? View.VISIBLE : View.GONE);
-        if (bubble.getBackground() != (showQuick ? null : cardBackground)) {
-            bubble.setBackground(showQuick ? null : cardBackground);
-        }
+        if (quickClosing && !showQuick) quickClosing = false;
+        pet.setOrbitOpen(showQuick && quickOpen && !tucked, false);
         lyrics.setCardVisible(showMusic && !tucked);
         alertPanel.setVisibility(alertActive ? View.VISIBLE : View.GONE);
         musicPanel.setVisibility(showMusic ? View.VISIBLE : View.GONE);
         updateBubble();
-        if (direction == 0 || showQuick) return;
+        if (direction == 0 || showQuick || !motionEnabled()) return;
         View active = alertActive ? alertPanel : showMusic ? musicPanel : null;
         for (View panel : new View[]{alertPanel, musicPanel}) {
             panel.animate().cancel();
@@ -855,14 +999,18 @@ public final class FloatingPetService extends Service {
 
     private void updateBubble() {
         if (bubble == null) return;
-        boolean visible = !tucked && (alertActive || (!temporaryReminder && (showingQuickMenu() || (hasMusic && !musicHidden))));
-        if (!visible) {
-            bubble.setVisibility(View.GONE);
-            return;
-        }
+        boolean showQuick = !tucked && showingQuickMenu();
+        boolean visible = !tucked && (alertActive || (!temporaryReminder && !showQuick && hasMusic && !musicHidden));
+        if (!showQuick) hideShortcuts();
+        if (!visible) bubble.setVisibility(View.GONE);
+        if (!visible && !showQuick) return;
         Point bounds = movementBounds();
         int width = bounds.x + params.width;
         int height = bounds.y + params.height;
+        if (showQuick) {
+            layoutShortcuts(width, height);
+            return;
+        }
         int edge = dp(4);
         int gap = dp(2);
         int left = params.x - gap;
@@ -872,9 +1020,8 @@ public final class FloatingPetService extends Service {
         bubbleOnRight = spaceRight >= spaceLeft;
         int available = Math.max(spaceLeft, spaceRight);
         boolean compact = alertActive && alertView.getVisibility() == View.GONE;
-        boolean showQuick = showingQuickMenu();
-        int preferredWidth = dp(compact ? 46 : showQuick ? Math.min(shortcutCount, 3) * 48 + 16 : 246);
-        boolean beside = available >= (showQuick ? preferredWidth : dp(compact ? 40 : 200));
+        int preferredWidth = dp(compact ? 48 : 246);
+        boolean beside = available >= dp(compact ? 44 : 200);
         disc.setVisibility(View.VISIBLE);
         bubbleParams.width = Math.min(preferredWidth, beside ? available : Math.max(1, width - 2 * edge));
         bubble.measure(View.MeasureSpec.makeMeasureSpec(bubbleParams.width, View.MeasureSpec.EXACTLY),
@@ -988,7 +1135,7 @@ public final class FloatingPetService extends Service {
     public void onDestroy() {
         PhoneEvents.detach(this);
         if (lyrics != null) lyrics.close();
-        if (quickPanel != null) quickPanel.animate().cancel();
+        hideShortcuts();
         if (torchManager != null) torchManager.unregisterTorchCallback(torchStatus);
         NotificationPreferences.get(this).unregisterOnSharedPreferenceChangeListener(previewSettingsChanged);
         if (petTouch != null) petTouch.cancelHold();

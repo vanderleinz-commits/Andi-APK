@@ -42,10 +42,13 @@ public final class MainActivity extends Activity {
     static final String ACTION_PERMISSIONS = "id.vanderleinz.andi.PERMISSIONS";
     private static final int REQUEST_ANDI_NOTIFICATIONS = 1;
     private static final String ASKED_FOR_NOTIFICATIONS = "asked_for_notifications";
-    private static final int NAVY = 0xff10192b;
-    private static final int WHITE = 0xffedf3ff;
-    private static final int MUTED = 0xffb5c2df;
-    private static final int COCOA = 0xffe3baa0;
+    private static final int NAVY = 0xff142139;
+    private static final int PAPER = 0xfff3ecde;
+    private static final int CREAM = 0xfffff9ed;
+    private static final int MUTED = 0xff48556b;
+    private static final int COCOA = 0xffedaf83;
+    private static final int MINT = 0xff77e3cf;
+    private static final int SKY = 0xffa4b9d4;
     private Button toggle;
     private TextView status;
     private Button focus;
@@ -71,94 +74,76 @@ public final class MainActivity extends Activity {
         super.onCreate(state);
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
-        scroll.setBackgroundColor(NAVY);
+        scroll.setBackgroundColor(PAPER);
 
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        content.setGravity(Gravity.CENTER_HORIZONTAL | Gravity.CENTER_VERTICAL);
-        content.setPadding(dp(22), dp(22), dp(22), dp(22));
+        content.setGravity(Gravity.CENTER_HORIZONTAL);
+        content.setPadding(dp(18), dp(16), dp(18), dp(26));
         scroll.addView(content);
 
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setGravity(Gravity.CENTER_HORIZONTAL);
-        int width = Math.min(dp(460), Math.max(0, getResources().getDisplayMetrics().widthPixels - dp(44)));
+        int width = Math.min(dp(500), Math.max(1, getResources().getDisplayMetrics().widthPixels - dp(36)));
         content.addView(panel, new LinearLayout.LayoutParams(width, -2));
 
-        TextView title = label("Andi", 38, WHITE);
-        title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        add(panel, title, -2, 0);
-        add(panel, label("Teman kecil di layar kamu", 15, MUTED), -2, 2);
-
-        PetView preview = new PetView(this);
-        preview.setBackground(shape(0xff192644, 28));
-        preview.setContentDescription("Andi. Ketuk untuk melihat ekspresinya.");
-        preview.setOnClickListener(view -> preview.react());
-        add(panel, preview, dp(174), 24);
-
-        status = label("", 14, MUTED);
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = heading("andi.", 34);
+        header.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
+        status = label("", 13, NAVY);
+        status.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
         status.setAccessibilityLiveRegion(TextView.ACCESSIBILITY_LIVE_REGION_POLITE);
-        add(panel, status, -2, 16);
+        header.addView(status, new LinearLayout.LayoutParams(-2, -2));
+        add(panel, header, -2, 0);
+        android.view.View divider = new android.view.View(this);
+        divider.setBackgroundColor(NAVY);
+        add(panel, divider, dp(2), 7);
 
-        toggle = new Button(this);
-        toggle.setAllCaps(false);
-        toggle.setTextColor(NAVY);
-        toggle.setTextSize(16);
-        toggle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        toggle.setBackground(new android.graphics.drawable.RippleDrawable(
-                android.content.res.ColorStateList.valueOf(0x3810192b), shape(COCOA, 18), null));
-        toggle.setOnClickListener(view -> toggleOverlay());
-        add(panel, toggle, dp(54), 14);
+        LinearLayout hero = new LinearLayout(this);
+        hero.setGravity(Gravity.CENTER_VERTICAL);
+        hero.setPadding(dp(14), dp(8), dp(9), dp(10));
+        hero.setBackground(surface(SKY, 12));
+        hero.setMinimumHeight(dp(130));
+        LinearLayout introduction = new LinearLayout(this);
+        introduction.setOrientation(LinearLayout.VERTICAL);
+        introduction.addView(heading("Hai, aku Andi.", 29));
+        introduction.addView(label("Teman kecil di layar kamu.", 14, NAVY));
+        hero.addView(introduction, new LinearLayout.LayoutParams(0, -2, 1));
+        PetView preview = new PetView(this);
+        preview.setContentDescription("Karakter Andi. Ketuk untuk melihat ekspresinya.");
+        preview.setOnClickListener(view -> preview.react());
+        hero.addView(preview, new LinearLayout.LayoutParams(dp(108), dp(108)));
+        add(panel, hero, -2, 15);
 
-        Button permissions = new Button(this);
-        permissions.setAllCaps(false);
-        permissions.setText("Izin & panduan instalasi");
-        permissions.setOnClickListener(view -> showPermissions());
-        add(panel, permissions, dp(54), 8);
+        toggle = action("", MINT, this::toggleOverlay);
+        toggle.setGravity(Gravity.CENTER);
+        add(panel, toggle, -2, 11);
+        add(panel, heading("Pengaturan", 20), -2, 16);
 
-        SharedPreferences notificationSettings = NotificationPreferences.get(this);
-        Switch quiet = new Switch(this);
-        quiet.setText("Mode Tenang");
-        quiet.setTextColor(WHITE);
-        quiet.setChecked(notificationSettings.getBoolean(NotificationPreferences.QUIET, false));
-        quiet.setOnCheckedChangeListener((button, checked) -> notificationSettings.edit()
-                .putBoolean(NotificationPreferences.QUIET, checked).apply());
-        add(panel, quiet, dp(48), 14);
-        add(panel, label("Jeda bubble notifikasi sambil tetap menampilkan Andi dan musik.", 13, MUTED), -2, 2);
+        SharedPreferences settings = NotificationPreferences.get(this);
+        add(panel, action("Izin & panduan instalasi", COCOA, this::showPermissions), -2, 6);
+        add(panel, action("Pilih pintasan menu", CREAM, () -> chooseShortcuts(settings)), -2, 7);
+        Switch glasses = setting("Kacamata Andi", settings, NotificationPreferences.GLASSES, true);
+        preview.setGlasses(glasses.isChecked());
+        glasses.setOnCheckedChangeListener((button, checked) -> {
+            settings.edit().putBoolean(NotificationPreferences.GLASSES, checked).apply();
+            preview.setGlasses(checked);
+        });
+        add(panel, glasses, -2, 7);
+        add(panel, setting("Animasi bubble", settings, NotificationPreferences.BUBBLE_MOTION, true), -2, 7);
 
-        Button perApp = new Button(this);
-        perApp.setAllCaps(false);
-        perApp.setText("Notifikasi per aplikasi");
-        perApp.setOnClickListener(view -> chooseNotificationApp(notificationSettings));
-        add(panel, perApp, dp(48), 8);
+        add(panel, heading("Notifikasi", 20), -2, 16);
+        add(panel, setting("Mode Tenang", settings, NotificationPreferences.QUIET, false), -2, 6);
+        add(panel, action("Notifikasi per aplikasi", CREAM, () -> chooseNotificationApp(settings)), -2, 7);
+        add(panel, setting("Menepi saat keyboard terbuka", settings, NotificationPreferences.AUTO_TUCK, false), -2, 7);
 
-        Switch autoTuck = new Switch(this);
-        autoTuck.setText("Menepi saat keyboard terbuka");
-        autoTuck.setTextColor(WHITE);
-        autoTuck.setChecked(notificationSettings.getBoolean(NotificationPreferences.AUTO_TUCK, false));
-        autoTuck.setOnCheckedChangeListener((button, checked) -> notificationSettings.edit()
-                .putBoolean(NotificationPreferences.AUTO_TUCK, checked).apply());
-        add(panel, autoTuck, dp(48), 8);
+        add(panel, heading("Produktivitas", 20), -2, 16);
+        add(panel, action("Kalender cepat", COCOA, this::showCalendar), -2, 6);
+        focus = action("", CREAM, this::toggleFocus);
+        add(panel, focus, -2, 7);
 
-        focus = new Button(this);
-        focus.setAllCaps(false);
-        focus.setOnClickListener(view -> toggleFocus());
-        add(panel, focus, dp(48), 8);
-
-        Button calendar = new Button(this);
-        calendar.setAllCaps(false);
-        calendar.setText("Kalender cepat");
-        calendar.setOnClickListener(view -> showCalendar());
-        add(panel, calendar, dp(48), 8);
-
-        Button shortcuts = new Button(this);
-        shortcuts.setAllCaps(false);
-        shortcuts.setText("Pilih pintasan menu");
-        shortcuts.setOnClickListener(view -> chooseShortcuts(notificationSettings));
-        add(panel, shortcuts, dp(48), 8);
-
-        TextView hint = label("Ketuk untuk menu cepat • Ketuk dua kali untuk musik\nTahan tiga detik untuk menyembunyikan Andi", 14, MUTED);
-        hint.setLineSpacing(dp(3), 1);
+        TextView hint = label("Ketuk sekali untuk pintasan. Ketuk dua kali untuk musik. Tahan tiga detik untuk menyembunyikan Andi.", 13, MUTED);
         add(panel, hint, -2, 15);
         setContentView(scroll);
 
@@ -582,8 +567,7 @@ public final class MainActivity extends Activity {
         renderPermissionStatus();
         boolean showing = FloatingPetService.isShowing();
         boolean allowed = Settings.canDrawOverlays(this);
-        status.setText(showing ? "Andi sedang melayang" :
-                allowed ? "Andi sedang beristirahat" : "Aktifkan izin untuk menampilkan Andi di atas aplikasi lain");
+        status.setText(showing ? "Melayang" : allowed ? "Istirahat" : "Izin overlay diperlukan");
         toggle.setText(showing ? "Sembunyikan Andi" : allowed ? "Tampilkan Andi" : "Buka pengaturan izin");
     }
 
@@ -598,8 +582,55 @@ public final class MainActivity extends Activity {
         view.setText(text);
         view.setTextSize(size);
         view.setTextColor(color);
-        view.setGravity(Gravity.CENTER);
+        view.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
         return view;
+    }
+
+    private TextView heading(String title, int size) {
+        TextView view = label(title, size, NAVY);
+        view.setTypeface(Typeface.create("sans-serif-black", Typeface.NORMAL));
+        view.setLetterSpacing(-.045f);
+        return view;
+    }
+
+    private Button action(String title, int color, Runnable action) {
+        Button button = new Button(this);
+        button.setAllCaps(false);
+        button.setText(title);
+        button.setTextColor(NAVY);
+        button.setTextSize(15);
+        button.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        button.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        button.setMinHeight(dp(48));
+        button.setBackground(new android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(0x25142139), surface(color, 8), null));
+        button.setPadding(dp(13), dp(8), dp(13), dp(10));
+        button.setOnClickListener(view -> action.run());
+        return button;
+    }
+
+    private Switch setting(String title, SharedPreferences settings, String key, boolean enabledByDefault) {
+        Switch toggle = new Switch(this);
+        toggle.setText(title);
+        toggle.setTextSize(15);
+        toggle.setTextColor(NAVY);
+        toggle.setMinHeight(dp(48));
+        toggle.setBackground(surface(CREAM, 8));
+        toggle.setPadding(dp(13), dp(8), dp(13), dp(10));
+        toggle.setChecked(settings.getBoolean(key, enabledByDefault));
+        toggle.setOnCheckedChangeListener((view, enabled) -> settings.edit().putBoolean(key, enabled).apply());
+        return toggle;
+    }
+
+    private android.graphics.drawable.LayerDrawable surface(int color, int radius) {
+        GradientDrawable offset = shape(NAVY, radius);
+        GradientDrawable face = shape(color, radius);
+        face.setStroke(dp(2), NAVY);
+        android.graphics.drawable.LayerDrawable background = new android.graphics.drawable.LayerDrawable(
+                new android.graphics.drawable.Drawable[]{offset, face});
+        background.setLayerInset(0, dp(3), dp(3), 0, 0);
+        background.setLayerInset(1, 0, 0, dp(3), dp(3));
+        return background;
     }
 
     private GradientDrawable shape(int color, int radius) {

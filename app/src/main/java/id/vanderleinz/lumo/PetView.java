@@ -16,6 +16,9 @@ final class PetView extends View {
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path body = new Path();
+    private final Path lenses = new Path();
+    private final Shader frame = new LinearGradient(38, 45, 84, 72,
+            new int[]{0xffffd5a1, 0xffbd845b, 0xffe4b68a}, null, Shader.TileMode.CLAMP);
     private final Path line = new Path();
     private final Shader shell = new LinearGradient(28, 22, 98, 91,
             new int[]{0xff6681aa, 0xff2c4368, 0xff15243f}, null, Shader.TileMode.CLAMP);
@@ -24,6 +27,11 @@ final class PetView extends View {
     private long lastTouch = born;
     private long reactionUntil;
     private boolean dragging;
+    private boolean glasses = true;
+    private boolean floating;
+    private boolean orbitOpen;
+    private long pulseAt = -1;
+    private boolean animatePulse;
     private int reaction;
 
     PetView(Context context) {
@@ -41,6 +49,31 @@ final class PetView extends View {
         body.lineTo(15, 74);
         body.quadTo(7, 70, 11, 64);
         body.close();
+        lenses.moveTo(53, 55);
+        lenses.quadTo(60, 49, 67, 55);
+        lenses.moveTo(27, 52);
+        lenses.lineTo(32, 54);
+        lenses.moveTo(88, 54);
+        lenses.lineTo(93, 52);
+    }
+
+    void setGlasses(boolean enabled) {
+        glasses = enabled;
+        invalidate();
+    }
+
+    void setFloating() {
+        floating = true;
+        invalidate();
+    }
+
+    void setOrbitOpen(boolean open, boolean pulse) {
+        orbitOpen = open;
+        if (pulse) {
+            pulseAt = SystemClock.uptimeMillis();
+            animatePulse = true;
+        }
+        invalidate();
     }
 
     void react() {
@@ -69,8 +102,11 @@ final class PetView extends View {
         canvas.save();
         canvas.translate((getWidth() - 120 * scale) / 2, (getHeight() - 120 * scale) / 2);
         canvas.scale(scale, scale);
-        fill(0x380a1027);
-        canvas.drawOval(33, 97, 87, 103, paint);
+        if (floating) drawLauncher(canvas, now);
+        else {
+            fill(0x380a1027);
+            canvas.drawOval(33, 97, 87, 103, paint);
+        }
         float bob = dragging ? -3f : (float) Math.sin(elapsed / 480.0) * (asleep ? 1.4f : 3f);
         canvas.translate(0, bob);
         if (reacting && !dragging) {
@@ -102,11 +138,54 @@ final class PetView extends View {
         canvas.drawRoundRect(16, 65, 25, 69, 2, 2, paint);
         canvas.drawRoundRect(95, 65, 104, 69, 2, 2, paint);
         drawFace(canvas, dragging, reacting, asleep, blinking);
+        if (glasses) drawGlasses(canvas);
         canvas.restore();
 
         if (isShown() && getWindowVisibility() == VISIBLE) {
-            postInvalidateDelayed(asleep ? 100 : 40);
+            postInvalidateDelayed(animatePulse ? 16 : (asleep ? 100 : 40));
         }
+    }
+
+    private void drawLauncher(Canvas canvas, long now) {
+        fill(orbitOpen ? 0xff285a56 : 0xff20364e);
+        canvas.drawCircle(60, 58, 48, paint);
+        stroke(0xffa4eedc, 2f);
+        canvas.drawCircle(60, 58, 46, paint);
+        if (orbitOpen) {
+            stroke(0x9877e3cf, 1f);
+            canvas.drawCircle(60, 58, 52, paint);
+            stroke(0x6677e3cf, 1f);
+            canvas.drawCircle(60, 58, 57, paint);
+        }
+        if (animatePulse) {
+            for (int ring = 0; ring < 3; ring++) {
+                float progress = (now - pulseAt - ring * 74) / 430f;
+                if (progress < 0 || progress >= 1) continue;
+                stroke((Math.round(225 * (1 - progress)) << 24) | 0x009cf5df, 1.4f);
+                canvas.drawCircle(60, 58, 42 + 16 * progress, paint);
+            }
+            animatePulse = now - pulseAt < 578;
+        }
+        canvas.scale(.79f, .79f, 60, 59);
+    }
+
+    private void drawGlasses(Canvas canvas) {
+        fill(0x229ce5f5);
+        canvas.drawCircle(43, 56, 10.6f, paint);
+        canvas.drawCircle(77, 56, 10.6f, paint);
+        stroke(0xff132039, 4.4f);
+        canvas.drawPath(lenses, paint);
+        canvas.drawCircle(43, 56, 11.4f, paint);
+        canvas.drawCircle(77, 56, 11.4f, paint);
+        stroke(0xffe4b68a, 2.9f);
+        paint.setShader(frame);
+        canvas.drawPath(lenses, paint);
+        canvas.drawCircle(43, 56, 11.4f, paint);
+        canvas.drawCircle(77, 56, 11.4f, paint);
+        paint.setShader(null);
+        stroke(0xbbfff1d3, 1.1f);
+        canvas.drawArc(35, 48, 51, 64, 205, 52, false, paint);
+        canvas.drawArc(69, 48, 85, 64, 205, 52, false, paint);
     }
 
     private void drawFace(Canvas canvas, boolean excited, boolean reacting, boolean asleep,

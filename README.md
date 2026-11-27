@@ -1,4 +1,4 @@
-# Andi Android · trial 0.4.2
+# Andi Android · trial 0.4.3
 
 Push proyek ke repo GitHub dengan GitHub Actions aktif untuk membangun APK di server GitHub. Workflow **Build Andi debug APK** berjalan saat push ke `main` dan dapat dijalankan manual dari tab **Actions**. Setelah build sukses, unduh artefak **Andi-debug**, ekstrak, lalu buka `Andi-debug.apk` di HP.
 
@@ -27,9 +27,13 @@ Ketuk bubble untuk membuka tujuan yang disediakan aplikasi, atau geser bubble ke
 
 Izin akses notifikasi Android terpisah dari izin Andi untuk menampilkan notifikasinya sendiri. Akses notifikasi dan sesi musik diproses di perangkat, tanpa menyimpan isi pesan. Build APK dan perilaku perangkat asli perlu diuji dengan toolchain Android dan HP yang terhubung.
 
+## Tampilan Andi
+
+Dashboard menggunakan palet navy, cocoa, dan mint dengan outline serta bayangan tegas. **Kacamata Andi** mengubah tampilan karakter di dashboard dan saat melayang. **Animasi bubble** mengatur gelombang dan gerakan ikon pintasan.
+
 ## Menu cepat dan pengingat
 
-Ketuk Andi sekali untuk membuka atau menutup menu cepat. Ketuk dua kali untuk membuka atau menyembunyikan kartu musik, dan tahan tiga detik untuk menyembunyikan Andi. Kartu musik punya tombol sebelumnya, putar atau jeda, berikutnya, acak, dan ulang jika pemutar mendukungnya.
+Ketuk Andi sekali untuk membuka atau menutup ikon pintasan yang menyebar ke sisi layar yang lebih lapang. Ketuk dua kali untuk membuka atau menyembunyikan kartu musik, dan tahan tiga detik untuk menyembunyikan Andi. Kartu musik punya tombol sebelumnya, putar atau jeda, berikutnya, acak, dan ulang jika pemutar mendukungnya.
 
 Buka **Kalender cepat**, pilih tanggal serta jam, lalu isi nama acara. Android dapat meminta izin **Alarm & pengingat** dan izin notifikasi. Saat pengingat berbunyi, Andi mencoba muncul selama 10 detik meskipun sebelumnya tersembunyi. Notifikasi sistem menjadi cadangan ketika layar terkunci atau sistem membatasi overlay. Pengingat yang belum berbunyi dijadwalkan lagi setelah reboot.
 
