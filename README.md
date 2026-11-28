@@ -1,4 +1,4 @@
-# Andi Android · trial 0.4.6
+# Andi Android · trial 0.4.7
 
 Push proyek ke repo GitHub dengan GitHub Actions aktif untuk membangun APK di server GitHub. Workflow **Build Andi debug APK** berjalan saat push ke `main` dan dapat dijalankan manual dari tab **Actions**. Setelah build sukses, unduh artefak **Andi-debug**, ekstrak, lalu buka `Andi-debug.apk` di HP.
 
@@ -18,7 +18,7 @@ Trial ini menargetkan Android 8.0 ke atas. Buka APK debug yang sudah dibuat, lal
 1. Buka **Izin & panduan instalasi**, pilih **Tampil di atas aplikasi**, aktifkan izin untuk Andi, lalu kembali dan pilih **Tampilkan Andi**.
 2. Dari halaman yang sama, aktifkan **Akses notifikasi dan musik**. Status izin diperbarui saat kembali dari Setelan Android. **Panduan pemasangan APK** mengarah ke unduhan build di GitHub.
 3. Dengan layar terbuka, kirim pesan percakapan dari aplikasi seperti WhatsApp atau Discord. Bubble menampilkan ikon, nama pengirim jika tersedia, dan pesan. Notifikasi aplikasi biasa tampil dengan judul dan isi aslinya, sementara notifikasi sistem dan notifikasi yang berlangsung terus tetap berada di panel Android. Bubble tampil selama 3,5 detik lalu kembali ke kartu musik jika tersedia.
-4. Putar lagu dari aplikasi musik untuk melihat CD berputar. Foto album muncul jika pemutar menyediakannya. Judul lagu dan nama artis tampil jika pemutar menyediakannya. Ketuk Andi dua kali untuk menyembunyikan atau membuka kartu musik. Geser Andi untuk melihat kartu pindah sisi. Coba juga tombol jeda, lanjut, sebelumnya, dan berikutnya.
+4. Putar lagu dari aplikasi musik untuk melihat CD berputar. Foto album muncul jika pemutar menyediakannya. Judul lagu dan nama artis tampil jika pemutar menyediakannya. Ketuk Andi dua kali untuk menyembunyikan atau membuka kartu musik. Andi menyimpan pilihan ini dan membuka kartu begitu sesi musik tersedia. Geser Andi untuk melihat kartu pindah sisi. Coba juga tombol jeda, lanjut, sebelumnya, dan berikutnya.
 5. Geser Andi, putar layar, lalu tahan karakter selama tiga detik untuk menyembunyikan. Beberapa layar sistem dan aplikasi dapat menyembunyikan overlay.
 
 Aktifkan **Mode Tenang** untuk menjeda bubble notifikasi. Buka **Notifikasi per aplikasi** untuk memilih **Sembunyikan**, **Ikon saja**, **Nama pengirim (percakapan)**, atau **Pratinjau lengkap**. Untuk notifikasi biasa, pilihan nama pengirim hanya menampilkan ikon. Perubahan membersihkan pratinjau yang masih tampil atau antre.

@@ -151,7 +151,7 @@ public final class FloatingPetService extends Service {
     private ImageButton nextTrack;
     private boolean hasMusic;
     private boolean alertActive;
-    private boolean musicHidden = true;
+    private boolean musicRequested;
     private WindowManager.LayoutParams bubbleParams;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final SharedPreferences.OnSharedPreferenceChangeListener previewSettingsChanged =
@@ -236,6 +236,8 @@ public final class FloatingPetService extends Service {
     public void onCreate() {
         super.onCreate();
         position = getSharedPreferences("pet_position", MODE_PRIVATE);
+        musicRequested = NotificationPreferences.get(this)
+                .getBoolean(NotificationPreferences.MUSIC_CARD_OPEN, false);
         try {
             torchManager = getSystemService(android.hardware.camera2.CameraManager.class);
             if (torchManager != null) torchManager.registerTorchCallback(torchStatus, main);
@@ -1007,7 +1009,7 @@ public final class FloatingPetService extends Service {
 
     private void showPanel(int direction) {
         boolean showQuick = showingQuickMenu();
-        boolean showMusic = !alertActive && !showQuick && !temporaryReminder && hasMusic && !musicHidden;
+        boolean showMusic = !alertActive && !showQuick && !temporaryReminder && hasMusic && musicRequested;
         if (quickClosing && !showQuick) quickClosing = false;
         lyrics.setCardVisible(showMusic && !tucked);
         alertPanel.setVisibility(alertActive ? View.VISIBLE : View.GONE);
@@ -1027,6 +1029,23 @@ public final class FloatingPetService extends Service {
         }
     }
 
+    private void toggleMusicCard() {
+        musicRequested = !musicRequested;
+        NotificationPreferences.get(this).edit()
+                .putBoolean(NotificationPreferences.MUSIC_CARD_OPEN, musicRequested).apply();
+        if (quickOpen || quickClosing) closeQuickMenu(false);
+        if (musicRequested) {
+            PhoneEvents.refreshActiveMusic();
+            if (!hasMusic) {
+                String message = PhoneEvents.isConnected()
+                        ? "Kartu musik akan muncul saat Andi menemukan lagu."
+                        : "Aktifkan Akses notifikasi dan musik di aplikasi Andi.";
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+            }
+        }
+        showPanel(musicRequested ? 1 : 0);
+    }
+
     private boolean showingQuickMenu() {
         return !alertActive && (quickOpen || quickClosing) && !temporaryReminder;
     }
@@ -1034,7 +1053,7 @@ public final class FloatingPetService extends Service {
     private void updateBubble() {
         if (bubble == null) return;
         boolean showQuick = !tucked && showingQuickMenu();
-        boolean visible = !tucked && (alertActive || (!temporaryReminder && !showQuick && hasMusic && !musicHidden));
+        boolean visible = !tucked && (alertActive || (!temporaryReminder && !showQuick && hasMusic && musicRequested));
         if (!showQuick) hideShortcuts();
         if (!visible) bubble.setVisibility(View.GONE);
         if (!visible && !showQuick) return;
@@ -1244,14 +1263,7 @@ public final class FloatingPetService extends Service {
                 main.removeCallbacks(singleTap);
                 tapPending = false;
                 if (!temporaryReminder) {
-                    if (quickOpen || quickClosing) closeQuickMenu(false);
-                    if (hasMusic) {
-                        musicHidden = !musicHidden;
-                        showPanel(musicHidden ? 0 : 1);
-                    } else {
-                        showPanel(0);
-                        Toast.makeText(FloatingPetService.this, "Belum ada musik aktif.", Toast.LENGTH_SHORT).show();
-                    }
+                    toggleMusicCard();
                 }
             } else {
                 tapPending = true;

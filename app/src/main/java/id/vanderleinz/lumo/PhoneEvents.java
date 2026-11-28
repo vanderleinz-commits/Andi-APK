@@ -67,12 +67,8 @@ public final class PhoneEvents extends NotificationListenerService {
         @Override public void onPlaybackStateChanged(PlaybackState value) { publishMusic(); }
         @Override public void onSessionDestroyed() {
             if (connected != PhoneEvents.this || manager == null) return;
-            try {
-                replaceControllers(manager.getActiveSessions(new ComponentName(PhoneEvents.this, PhoneEvents.class)));
-            } catch (SecurityException error) {
-                clearControllers();
-                publishMusic();
-            }
+            // Read after the session manager can remove the destroyed session.
+            main.post(PhoneEvents.this::reloadActiveSessions);
         }
     };
 
@@ -82,7 +78,11 @@ public final class PhoneEvents extends NotificationListenerService {
 
     static void attach(FloatingPetService service) {
         overlay = service;
-        if (connected != null) connected.publishMusic();
+        refreshActiveMusic();
+    }
+
+    static void refreshActiveMusic() {
+        if (connected != null) connected.reloadActiveSessions();
     }
 
     static void detach(FloatingPetService service) {
@@ -127,6 +127,16 @@ public final class PhoneEvents extends NotificationListenerService {
                 overlay.clearAlert();
                 overlay.showMusic(null, null, null, false, 0);
             }
+        }
+    }
+
+    private void reloadActiveSessions() {
+        if (connected != this || manager == null) return;
+        try {
+            replaceControllers(manager.getActiveSessions(new ComponentName(this, PhoneEvents.class)));
+        } catch (RuntimeException error) {
+            Log.w("AndiMusic", "Could not reload the active media sessions", error);
+            publishMusic();
         }
     }
 
@@ -285,42 +295,77 @@ public final class PhoneEvents extends NotificationListenerService {
 
     private void refreshMusic() {
         if (overlay == null || connected != this) return;
-        MediaController active = firstSession(PlaybackState.STATE_PLAYING);
-        if (active == null && selected != null && controllers.contains(selected)
-                && stateOf(selected) == PlaybackState.STATE_PAUSED) active = selected;
-        selected = active != null ? active : firstSession(PlaybackState.STATE_PAUSED);
-        if (selected != null) {
-            MediaController controller = selected;
-            PlaybackState state = controller.getPlaybackState();
-            MediaMetadata metadata = controller.getMetadata();
-            CharSequence title = metadata == null ? null : metadata.getDescription().getTitle();
-            if (state != null && title != null && title.length() > 0) {
-                publishTrack(state, metadata);
-                publishModes();
-                return;
+        Track track = selectTrack();
+        selected = track == null ? null : track.controller;
+        if (track != null) {
+            publishTrack(track.state, track.metadata);
+            publishModes();
+        } else {
+            clearModesController();
+            if (musicShown && !clearMusicPending) {
+                clearMusicPending = true;
+                main.postDelayed(clearMusic, 2200);
             }
-        }
-        clearModesController();
-        if (musicShown && !clearMusicPending) {
-            clearMusicPending = true;
-            main.postDelayed(clearMusic, 2200);
         }
     }
 
-    private MediaController firstSession(int targetState) {
+    private Track selectTrack() {
+        Track best = null;
+        int pendingPriority = -1;
         for (MediaController controller : controllers) {
-            MediaMetadata metadata = controller.getMetadata();
-            if (stateOf(controller) == targetState && metadata != null) {
-                CharSequence title = metadata.getDescription().getTitle();
-                if (title != null && title.length() != 0) return controller;
+            try {
+                PlaybackState state = controller.getPlaybackState();
+                int priority = state == null ? -1 : playbackPriority(state.getState());
+                if (priority < 0) continue;
+                MediaMetadata metadata = controller.getMetadata();
+                CharSequence title = metadata == null ? null : metadata.getDescription().getTitle();
+                if (TextUtils.isEmpty(title)) {
+                    pendingPriority = Math.max(pendingPriority, priority);
+                    continue;
+                }
+                boolean wasSelected = selected != null && controller.getSessionToken().equals(selected.getSessionToken());
+                if (best == null || priority > best.priority || (priority == best.priority && wasSelected)) {
+                    best = new Track(controller, state, metadata, priority);
+                }
+            } catch (RuntimeException error) {
+                Log.w("AndiMusic", "Could not read a media session", error);
             }
         }
-        return null;
+        // Keep the old card during the grace period while a more relevant session loads its title.
+        return best != null && best.priority >= pendingPriority ? best : null;
     }
 
-    private int stateOf(MediaController controller) {
-        PlaybackState state = controller.getPlaybackState();
-        return state == null ? PlaybackState.STATE_NONE : state.getState();
+    private static int playbackPriority(int state) {
+        switch (state) {
+            case PlaybackState.STATE_PLAYING:
+            case PlaybackState.STATE_FAST_FORWARDING:
+            case PlaybackState.STATE_REWINDING:
+                return 2;
+            case PlaybackState.STATE_BUFFERING:
+            case PlaybackState.STATE_CONNECTING:
+            case PlaybackState.STATE_SKIPPING_TO_PREVIOUS:
+            case PlaybackState.STATE_SKIPPING_TO_NEXT:
+            case PlaybackState.STATE_SKIPPING_TO_QUEUE_ITEM:
+                return 1;
+            case PlaybackState.STATE_PAUSED:
+                return 0;
+            default:
+                return -1;
+        }
+    }
+
+    private static final class Track {
+        final MediaController controller;
+        final PlaybackState state;
+        final MediaMetadata metadata;
+        final int priority;
+
+        Track(MediaController controller, PlaybackState state, MediaMetadata metadata, int priority) {
+            this.controller = controller;
+            this.state = state;
+            this.metadata = metadata;
+            this.priority = priority;
+        }
     }
 
     private void publishTrack(PlaybackState state, MediaMetadata metadata) {

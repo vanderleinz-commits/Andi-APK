@@ -7,6 +7,7 @@ final class NotificationPreferences {
     static final String GLASSES = "andi_glasses";
     static final String CHARACTER = "andi_character";
     static final String BUBBLE_MOTION = "bubble_motion";
+    static final String MUSIC_CARD_OPEN = "music_card_open";
     static final String SHORTCUTS = "quick_shortcuts";
     static final String LYRICS_CONSENT = "lyrics_consent";
     static final String[] SHORTCUT_LABELS = {"Kalender", "Home", "Senter", "Daya", "Kunci", "Screenshot"};
