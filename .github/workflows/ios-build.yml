@@ -1,0 +1,68 @@
+name: Build Andi for iPhone
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, ios]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  xcode:
+    runs-on: macos-15
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate the Xcode project
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+        run: |
+          xcodebuild -version
+          if ! command -v xcodegen >/dev/null; then
+            brew install xcodegen
+          fi
+          xcodegen generate
+      - name: Compile the app and widget for iPhone
+        run: |
+          xcodebuild -project Andi.xcodeproj -scheme Andi -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/andi-device" CODE_SIGNING_ALLOWED=NO -quiet build
+          test -d "$RUNNER_TEMP/andi-device/Build/Products/Debug-iphoneos/Andi.app/PlugIns/AndiWidgets.appex"
+      - name: Build, install and launch on iPhone Simulator
+        run: |
+          xcodebuild -project Andi.xcodeproj -scheme Andi -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/andi-simulator" CODE_SIGNING_ALLOWED=NO -quiet build
+          app="$RUNNER_TEMP/andi-simulator/Build/Products/Debug-iphonesimulator/Andi.app"
+          test -d "$app/PlugIns/AndiWidgets.appex"
+          device="$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          for runtime in sorted(devices, key=lambda item: tuple(int(part) for part in item.split(".")[-1].split("-")[1:] if part.isdigit()), reverse=True):
+              for item in devices[runtime]:
+                  if item["isAvailable"] and item["name"].startswith("iPhone"):
+                      print(item["udid"])
+                      sys.exit(0)
+          sys.exit("No iPhone simulator is available")
+          ')"
+          xcrun simctl boot "$device"
+          xcrun simctl bootstatus "$device" -b
+          xcrun simctl install "$device" "$app"
+          xcrun simctl launch "$device" id.vanderleinz.andi
+      - name: Package Simulator app
+        run: |
+          ditto -c -k --keepParent \
+            "$RUNNER_TEMP/andi-simulator/Build/Products/Debug-iphonesimulator/Andi.app" \
+            "$RUNNER_TEMP/Andi-iOS-0.1.0-Simulator.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Andi-iOS-0.1.0-Simulator
+          path: ${{ runner.temp }}/Andi-iOS-0.1.0-Simulator.zip
+          if-no-files-found: error
